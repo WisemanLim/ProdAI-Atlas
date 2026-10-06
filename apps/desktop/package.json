@@ -1,0 +1,14 @@
+{
+  "name": "atlas-desktop",
+  "private": true,
+  "version": "0.2.0",
+  "license": "Apache-2.0",
+  "scripts": {
+    "prepare-sidecar": "bash scripts/prepare.sh",
+    "build": "tauri build --bundles app",
+    "dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0"
+  }
+}

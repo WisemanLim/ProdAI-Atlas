@@ -1,0 +1,709 @@
+# ProdAI Atlas compose 번들 v0.2.0 — scripts/make-bundle.py 가 생성 (직접 수정 금지)
+# 설치: ./install.sh  ·  또는 atlas install
+services:
+  agent-al-plan:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+      nats:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_AUTH=${ATLAS_A2A_AUTH:-verify}
+    - ATLAS_ALLOW_ENV_SECRETS=${ATLAS_ALLOW_ENV_SECRETS:-false}
+    - ATLAS_GATEWAY_KEY=${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    - ATLAS_GATEWAY_URL=http://gateway:8080
+    - ATLAS_MANAGER_TOKEN=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_MANAGER_URL=http://manager:8080
+    - ATLAS_PUBLIC_URL=http://agent-al-plan:8000
+    - ATLAS_SECRET_REFRESH_S=${ATLAS_SECRET_REFRESH_S:-300}
+    - ATLAS_UNIT_MODULE=units.al_plan
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${AL_PLAN_PORT:-8000}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - source: runtimedata
+      target: /app/data
+      type: volume
+      volume: {}
+  agent-al-run:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+      nats:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_AUTH=${ATLAS_A2A_AUTH:-verify}
+    - ATLAS_ALLOW_ENV_SECRETS=${ATLAS_ALLOW_ENV_SECRETS:-false}
+    - ATLAS_GATEWAY_KEY=${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    - ATLAS_GATEWAY_URL=http://gateway:8080
+    - ATLAS_GUARD_URL=http://agent-gr:8000
+    - ATLAS_MANAGER_TOKEN=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_MANAGER_URL=http://manager:8080
+    - ATLAS_MCP_REGISTRY_URL=http://agent-mcp-reg:8000
+    - ATLAS_PLANNER_URL=http://agent-al-plan:8000
+    - ATLAS_PUBLIC_URL=http://agent-al-run:8000
+    - ATLAS_SECRET_REFRESH_S=${ATLAS_SECRET_REFRESH_S:-300}
+    - ATLAS_UNIT_MODULE=units.al_run
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${AL_RUN_PORT:-8001}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - source: alrundata
+      target: /app/data
+      type: volume
+      volume: {}
+  agent-ev:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_AUTH=${ATLAS_A2A_AUTH:-verify}
+    - ATLAS_ALLOW_ENV_SECRETS=${ATLAS_ALLOW_ENV_SECRETS:-false}
+    - ATLAS_EV_CURATOR_TOKEN=${ATLAS_EV_CURATOR_TOKEN:?ATLAS_EV_CURATOR_TOKEN 필요}
+    - ATLAS_GATEWAY_KEY=${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    - ATLAS_GATEWAY_URL=http://gateway:8080
+    - ATLAS_GUARD_URL=http://agent-gr:8000
+    - ATLAS_MANAGER_TOKEN=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_MANAGER_URL=http://manager:8080
+    - ATLAS_OB_URL=http://agent-ob:8000
+    - ATLAS_PUBLIC_URL=http://agent-ev:8000
+    - ATLAS_SECRET_REFRESH_S=${ATLAS_SECRET_REFRESH_S:-300}
+    - ATLAS_UNIT_MODULE=units.ev
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${EV_PORT:-8007}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - source: evdata
+      target: /app/data
+      type: volume
+      volume: {}
+  agent-gr:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_AUTH=${ATLAS_A2A_AUTH:-verify}
+    - ATLAS_ALLOW_ENV_SECRETS=${ATLAS_ALLOW_ENV_SECRETS:-false}
+    - ATLAS_GUARD_ADMIN_TOKEN=${ATLAS_GUARD_ADMIN_TOKEN:?ATLAS_GUARD_ADMIN_TOKEN 필요}
+    - ATLAS_MANAGER_TOKEN=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_MANAGER_URL=http://manager:8080
+    - ATLAS_PUBLIC_URL=http://agent-gr:8000
+    - ATLAS_SECRET_REFRESH_S=${ATLAS_SECRET_REFRESH_S:-300}
+    - ATLAS_UNIT_MODULE=units.gr_io
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${GR_PORT:-8005}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    - /run/secrets/atlas
+    volumes:
+    - source: grdata
+      target: /app/data
+      type: volume
+      volume: {}
+  agent-mcp-reg:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_AUTH=${ATLAS_A2A_AUTH:-verify}
+    - ATLAS_ALLOW_ENV_SECRETS=${ATLAS_ALLOW_ENV_SECRETS:-false}
+    - ATLAS_MANAGER_TOKEN=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_MANAGER_URL=http://manager:8080
+    - ATLAS_MCP_REG_ADMIN_TOKEN=${ATLAS_MCP_REG_ADMIN_TOKEN:?ATLAS_MCP_REG_ADMIN_TOKEN 필요}
+    - ATLAS_PUBLIC_URL=http://agent-mcp-reg:8000
+    - ATLAS_SECRET_REFRESH_S=${ATLAS_SECRET_REFRESH_S:-300}
+    - ATLAS_UNIT_MODULE=units.mcp_reg
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${MCP_REG_PORT:-8002}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - source: mcpregdata
+      target: /app/data
+      type: volume
+      volume: {}
+  agent-ob:
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+        required: true
+      db:
+        condition: service_healthy
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_AUTH=${ATLAS_A2A_AUTH:-verify}
+    - ATLAS_ALLOW_ENV_SECRETS=${ATLAS_ALLOW_ENV_SECRETS:-false}
+    - ATLAS_GATEWAY_KEY=${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    - ATLAS_GATEWAY_URL=http://gateway:8080
+    - ATLAS_MANAGER_TOKEN=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_MANAGER_URL=http://manager:8080
+    - ATLAS_OB_ALERT_INTERVAL=${ATLAS_OB_ALERT_INTERVAL:-30}
+    - ATLAS_OB_ECHO_RECEIVER=${ATLAS_OB_ECHO_RECEIVER:-false}
+    - ATLAS_OB_PUBLIC_URL=${ATLAS_OB_PUBLIC_URL:-http://127.0.0.1:8006}
+    - ATLAS_PUBLIC_URL=http://agent-ob:8000
+    - ATLAS_SECRET_REFRESH_S=${ATLAS_SECRET_REFRESH_S:-300}
+    - ATLAS_UNIT_MODULE=units.ob
+    - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD 필요}
+    - CLICKHOUSE_URL=http://clickhouse:8123
+    - CLICKHOUSE_USER=${CLICKHOUSE_USER:-atlas}
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${OB_PORT:-8006}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - source: obdata
+      target: /app/data
+      type: volume
+      volume: {}
+  clickhouse:
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '0'
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD 필요}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-atlas}
+    healthcheck:
+      interval: 5s
+      retries: 30
+      test:
+      - CMD-SHELL
+      - wget -qO- http://127.0.0.1:8123/ping | grep -q Ok
+      timeout: 3s
+    image: ${CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:25.8}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123
+    ulimits:
+      nofile:
+        hard: 262144
+        soft: 262144
+    volumes:
+    - source: chdata
+      target: /var/lib/clickhouse
+      type: volume
+      volume: {}
+  console:
+    depends_on:
+      gateway:
+        condition: service_started
+        required: true
+      manager:
+        condition: service_healthy
+        required: true
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-console:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${CONSOLE_PORT:-5173}:5173
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+  db:
+    environment:
+      POSTGRES_DB: ${DB_NAME:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 필요 / required}
+      POSTGRES_USER: ${DB_USER:?DB_USER 필요 / required}
+    healthcheck:
+      interval: 5s
+      retries: 20
+      test:
+      - CMD-SHELL
+      - pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}
+      timeout: 3s
+    image: ${DB_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    volumes:
+    - source: dbdata
+      target: /var/lib/postgresql/data
+      type: volume
+      volume: {}
+  gateway:
+    depends_on:
+      nats:
+        condition: service_healthy
+        required: true
+      openbao-init:
+        condition: service_completed_successfully
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    env_file:
+    - .env
+    environment:
+      ATLAS_BATCH_POLL_BASE_SEC: ${ATLAS_BATCH_POLL_BASE_SEC:-60}
+      ATLAS_GATEWAY_ADMIN_TOKEN: ${ATLAS_GATEWAY_ADMIN_TOKEN:?ATLAS_GATEWAY_ADMIN_TOKEN 필요}
+      ATLAS_GATEWAY_BOOTSTRAP_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_GATEWAY_BOOTSTRAP_RPM: ${ATLAS_GATEWAY_BOOTSTRAP_RPM:-600}
+      ATLAS_GATEWAY_BOOTSTRAP_TPM: ${ATLAS_GATEWAY_BOOTSTRAP_TPM:-200000}
+      ATLAS_GUARD_ON_ERROR: ${ATLAS_GUARD_ON_ERROR:-fail_open}
+      ATLAS_GUARD_TIMEOUT_MS: '500'
+      ATLAS_GUARD_URL: http://agent-gr:8000
+      ATLAS_OB_CAPTURE: ${ATLAS_OB_CAPTURE:-redacted}
+      ATLAS_SECRET_STORE: ${ATLAS_GATEWAY_SECRET_STORE:-}
+      NATS_URL: nats://nats:4222
+      OPENAI_API_KEYS: ${OPENAI_API_KEYS:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OTEL_BSP_SCHEDULE_DELAY: '500'
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - /server
+      - -healthcheck
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-gateway:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${GATEWAY_PORT:-8090}:8080
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - read_only: true
+      source: baotokens
+      target: /run/secrets/atlas/bao
+      type: volume
+      volume: {}
+  iam-db-init:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+    entrypoint:
+    - sh
+    - -c
+    - for d in keycloak openfga; do psql -h db -U "$$DB_USER" -d "$$DB_NAME" -tAc "SELECT 1 FROM pg_database WHERE datname='$$d'" | grep -q 1 || psql -h db -U "$$DB_USER" -d "$$DB_NAME" -c "CREATE DATABASE
+      $$d"; done
+    env_file:
+    - .env
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    image: ${DB_IMAGE:-postgres:17-alpine}
+    restart: 'no'
+  keycloak:
+    command:
+    - start
+    - --import-realm
+    - --hostname-strict=false
+    depends_on:
+      iam-db-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+    - ATLAS_KC_CI_SECRET=${ATLAS_KC_CI_SECRET:?ATLAS_KC_CI_SECRET 필요 / required}
+    - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD 필요 / required}
+    - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USER:-admin}
+    - KC_HEALTH_ENABLED=true
+    - KC_HOSTNAME=${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}
+    - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
+    - KC_HTTP_ENABLED=true
+    - KC_DB=postgres
+    - KC_DB_PASSWORD=${DB_PASSWORD}
+    - KC_DB_URL=jdbc:postgresql://db:5432/keycloak
+    - KC_DB_USERNAME=${DB_USER}
+    healthcheck:
+      interval: 10s
+      retries: 30
+      start_period: 30s
+      test:
+      - CMD-SHELL
+      - "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q UP <&3"
+      timeout: 5s
+    image: quay.io/keycloak/keycloak:26.3
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${KEYCLOAK_PORT:-8180}:8080
+    restart: unless-stopped
+    volumes:
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: ./keycloak
+      target: /opt/keycloak/data/import
+      type: bind
+  manager:
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+      nats:
+        condition: service_healthy
+        required: true
+      openbao-init:
+        condition: service_completed_successfully
+        required: true
+      openfga:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_started
+        required: true
+    env_file:
+    - .env
+    environment:
+    - ATLAS_A2A_SIGNING_KEY=${ATLAS_A2A_SIGNING_KEY:-}
+    - ATLAS_AUTH_MODE=${ATLAS_AUTH_MODE:-off}
+    - ATLAS_FGA_TOKEN=${OPENFGA_PRESHARED_KEY:-}
+    - ATLAS_FGA_URL=http://openfga:8080
+    - ATLAS_GUARD_SECRET=${ATLAS_GUARD_SECRET:-}
+    - ATLAS_MANAGER_BOOTSTRAP_KEY=${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+    - ATLAS_OIDC_ISSUER=${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}/realms/atlas
+    - ATLAS_OIDC_JWKS_URL=http://keycloak:8080/realms/atlas/protocol/openid-connect/certs
+    - ATLAS_PROBE_INTERVAL=${ATLAS_PROBE_INTERVAL:-5s}
+    - ATLAS_SECRET_IMPORT=default/guard-secret=ATLAS_GUARD_SECRET
+    - ATLAS_SECRET_STORE=${ATLAS_SECRET_STORE:-file:///app/data/secrets}
+    - ATLAS_SVC_URLS=gw=http://gateway:8080,ob=http://agent-ob:8000,ev=http://agent-ev:8000,gr=http://agent-gr:8000,mcpreg=http://agent-mcp-reg:8000,alrun=http://agent-al-run:8000
+    - NATS_URL=nats://nats:4222
+    - OTEL_BSP_SCHEDULE_DELAY=500
+    - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    - REDIS_URL=redis://redis:6379/0
+    - DATABASE_URL=${MANAGER_DATABASE_URL:?MANAGER_DATABASE_URL 필요 / required}
+    healthcheck:
+      interval: 10s
+      retries: 6
+      test:
+      - CMD
+      - /server
+      - -healthcheck
+      timeout: 3s
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-manager:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${MANAGER_PORT:-8080}:8080
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+    volumes:
+    - source: managerdata
+      target: /app/data
+      type: volume
+      volume: {}
+    - read_only: true
+      source: baotokens
+      target: /run/secrets/atlas/bao
+      type: volume
+      volume: {}
+  mcp-demo:
+    command:
+    - python
+    - -m
+    - mcp_servers.demo
+    environment:
+      DEMO_POISON: ${DEMO_POISON:-false}
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${MCP_DEMO_PORT:-8003}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+  mcp-tool:
+    command:
+    - python
+    - -m
+    - mcp_servers.openapi_tools
+    depends_on:
+      manager:
+        condition: service_healthy
+        required: true
+    environment:
+      ATLAS_MANAGER_TOKEN: ${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+      MCP_OPENAPI_BASE_URL: http://manager:8080
+      MCP_OPENAPI_URL: http://manager:8080/api/v1/openapi.json
+    image: ${ATLAS_REGISTRY:-ghcr.io/prodai}/atlas-agent-runtime:${ATLAS_VERSION:?ATLAS_VERSION 필요}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${MCP_TOOL_PORT:-8004}:8000
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+    - /tmp
+  nats:
+    command:
+    - -js
+    - -sd
+    - /data
+    - -m
+    - '8222'
+    healthcheck:
+      interval: 5s
+      retries: 20
+      test:
+      - CMD-SHELL
+      - wget -qO- http://127.0.0.1:8222/healthz >/dev/null
+      timeout: 3s
+    image: ${NATS_IMAGE:-nats:2.11-alpine}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${NATS_PORT:-4222}:4222
+    - ${BIND_HOST:-127.0.0.1}:${NATS_MONITOR_PORT:-8222}:8222
+    restart: unless-stopped
+    volumes:
+    - source: natsdata
+      target: /data
+      type: volume
+      volume: {}
+  openbao:
+    command:
+    - server
+    environment:
+      BAO_LOCAL_CONFIG: '{"storage":{"file":{"path":"/openbao/file"}},"listener":[{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}}],"disable_mlock":true,"ui":false,"api_addr":"http://openbao:8200"}'
+    healthcheck:
+      interval: 5s
+      retries: 30
+      test:
+      - CMD-SHELL
+      - wget -qO- 'http://127.0.0.1:8200/v1/sys/health?sealedcode=200&uninitcode=200' >/dev/null
+      timeout: 3s
+    image: openbao/openbao:2.4
+    restart: unless-stopped
+    volumes:
+    - source: baodata
+      target: /openbao/file
+      type: volume
+      volume: {}
+  openbao-init:
+    depends_on:
+      openbao:
+        condition: service_healthy
+        required: true
+    entrypoint:
+    - sh
+    - /init/init.sh
+    environment:
+      BAO_ADDR: http://openbao:8200
+    image: openbao/openbao:2.4
+    restart: 'no'
+    volumes:
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: ./openbao
+      target: /init
+      type: bind
+    - source: baokeys
+      target: /keys
+      type: volume
+      volume: {}
+    - source: baotokens
+      target: /tokens
+      type: volume
+      volume: {}
+  openfga:
+    command: run
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+        required: true
+    environment:
+    - OPENFGA_AUTHN_METHOD=preshared
+    - OPENFGA_AUTHN_PRESHARED_KEYS=${OPENFGA_PRESHARED_KEY:?OPENFGA_PRESHARED_KEY 필요 / required}
+    - OPENFGA_LOG_LEVEL=warn
+    - OPENFGA_PLAYGROUND_ENABLED=false
+    - OPENFGA_DATASTORE_ENGINE=postgres
+    - OPENFGA_DATASTORE_URI=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/openfga?sslmode=disable
+    healthcheck:
+      interval: 5s
+      retries: 30
+      test:
+      - CMD
+      - /usr/local/bin/grpc_health_probe
+      - -addr=127.0.0.1:8081
+      timeout: 3s
+    image: openfga/openfga:v1.10.2
+    restart: unless-stopped
+  openfga-migrate:
+    command: migrate
+    depends_on:
+      iam-db-init:
+        condition: service_completed_successfully
+        required: true
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/openfga?sslmode=disable
+    image: openfga/openfga:v1.10.2
+    restart: 'no'
+  otel-collector:
+    command:
+    - --config=/etc/otelcol/collector.yaml
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+        required: true
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD 필요}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-atlas}
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.136.0}
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${OTLP_GRPC_PORT:-4317}:4317
+    - ${BIND_HOST:-127.0.0.1}:${OTLP_HTTP_PORT:-4318}:4318
+    user: 0:0
+    volumes:
+    - bind:
+        create_host_path: true
+      read_only: true
+      source: ./otel/collector.yaml
+      target: /etc/otelcol/collector.yaml
+      type: bind
+    - source: otelsink
+      target: /data
+      type: volume
+      volume: {}
+  redis:
+    image: redis:7.4-alpine
+    ports:
+    - ${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379
+    restart: unless-stopped
+volumes:
+  alrundata: null
+  baodata: null
+  baokeys: null
+  baotokens: null
+  chdata: null
+  dbdata: null
+  evdata: null
+  grdata: null
+  managerdata: null
+  mcpregdata: null
+  natsdata: null
+  obdata: null
+  otelsink: null
+  runtimedata: null
+x-agent-auth:
+  ATLAS_A2A_AUTH: ${ATLAS_A2A_AUTH:-verify}
+  ATLAS_ALLOW_ENV_SECRETS: ${ATLAS_ALLOW_ENV_SECRETS:-false}
+  ATLAS_MANAGER_TOKEN: ${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+  ATLAS_SECRET_REFRESH_S: ${ATLAS_SECRET_REFRESH_S:-300}
+x-bus-env:
+  NATS_URL: nats://nats:4222
+  OTEL_BSP_SCHEDULE_DELAY: '500'
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  REDIS_URL: redis://redis:6379/0

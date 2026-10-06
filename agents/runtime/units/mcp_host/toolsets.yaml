@@ -1,0 +1,11 @@
+# toolset 프로필 (FR-MCP-SEL-04) — 에이전트 유형별 기본 도구 묶음. include/exclude = {서버 별칭}__{도구} glob, readOnly = 신뢰 서버의 readOnlyHint 도구만.
+profiles:
+  code-review:
+    include: ["connectors__github_list_issues", "connectors__jira_search", "demo__search_docs"]
+    readOnly: true
+  ops-readonly:
+    include: ["*"]
+    readOnly: true
+  support:
+    include: ["demo__*", "connectors__slack_post_message", "connectors__jira_search"]
+    exclude: ["demo__delete_records"]

@@ -1,0 +1,15 @@
+kind: eval-dataset
+name: refund-eval
+version: 1.0.0
+title: 환불 상담 평가셋
+description: 환불 정책 질의 골든셋 시드 (EV-GOLD 업로드용)
+unit_ids: [EV-GOLD, EV-REG]
+layer: L2
+requires: [EV-REG]
+changelog: 최초 공개
+params: {type: object, properties: {}}
+sbom: {bomFormat: CycloneDX, specVersion: "1.6", components: []}
+payload:
+  items:
+    - {input: {q: "환불 기간은?"}, expected_output: "7일"}
+    - {input: {q: "환불 처리 기간은?"}, expected_output: "3 영업일"}

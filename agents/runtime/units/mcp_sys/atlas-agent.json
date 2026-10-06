@@ -1,0 +1,27 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "mcp-sys", "unitId": "MCP-SYS", "layer": "L1", "concept": "02-mcp"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["mcp.systems"]},
+    "harness": {"modelAlias": "chat-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {
+      "upstreams": {"github": "http://fake-upstream:8000/github", "slack": "http://fake-upstream:8000/slack", "jira": "http://fake-upstream:8000/jira"},
+      "egressAllow": ["fake-upstream", "*.github.com", "slack.com", "*.atlassian.net"],
+      "rowLimit": 100,
+      "resourceTtlMs": 30000,
+      "dataClass": {"erp_customers": "confidential", "erp_orders": "internal"},
+      "boundaries": {
+        "default": {"db_tables": ["erp_orders", "erp_customers"], "file_prefixes": ["public/"], "row_filter": {}},
+        "kr-sales": {"db_tables": ["erp_orders"], "file_prefixes": ["public/"], "row_filter": {"erp_orders": "region = 'KR'"}}
+      }
+    },
+    "secrets": [{"name": "github-token", "required": false}, {"name": "slack-token", "required": false}, {"name": "jira-token", "required": false},
+                {"name": "egress-admin-token", "required": true}],
+    "state": {"stateless": false, "store": "sql", "stateSchemaVersion": 1},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

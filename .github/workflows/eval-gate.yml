@@ -1,0 +1,22 @@
+name: eval-gate
+# 회귀 평가 게이트 (FR-EV-REG-06): 스택을 띄우고 골든셋 스위트를 돌려 임계값 미달이면 실패(exit 100).
+on:
+  pull_request:
+    paths: ["agents/**", "apps/gateway/**", "evals/**", "agents/runtime/evals/**"]
+  workflow_dispatch:
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -f .env.prod || cp .env.example .env.prod
+      - run: make preflight
+      - run: make local-all
+      - name: wait for agents
+        run: for _ in $(seq 1 120); do curl -fsS http://127.0.0.1:8007/readyz && curl -fsS http://127.0.0.1:8000/readyz && break; sleep 2; done
+      - run: make eval-seed
+      - name: regression gate
+        run: make eval SUITE=evals/planner-smoke.yaml
+      - if: always()
+        run: make local-stop

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "콘솔은 원격(127.0.0.1 사이드카) 페이지라 IPC 권한을 주지 않는다 — 기본 코어만",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,120 @@
+# atlas-gateway 기본 설정 (GATEWAY_CONFIG 로 교체 가능). PRD §8 · FR-GW-ROUTE-03(alias) · FR-GW-COST-02(버전 가격표) · FR-GW-POL-01
+aliases:
+  planner-default:                       # AL-PLAN harness.modelAlias
+    deployments: [{provider: mock, model: mock-planner, weight: 1}]
+    tier: medium
+  chat-default:
+    deployments: [{provider: mock, model: mock-chat, weight: 1}]
+    tier: medium
+    default_max_out: 512
+  agent-default:                         # AL-RUN harness.modelAlias — 도구 호출(mock-agent 각본)
+    deployments: [{provider: mock, model: mock-agent, weight: 1}]
+    tier: medium
+  chat-econ:                             # 경제 라우팅 opt-in alias — econ.routes 규칙으로 저가 alias 로 내려갈 수 있음
+    deployments: [{provider: mock, model: mock-chat, weight: 1}]
+    tier: medium
+    default_max_out: 512
+  chat-small:                            # 저가 등급 (EC-ROUTE-01 · EC-MODEL-01 하향 대상)
+    deployments: [{provider: mock, model: mock-chat-small, weight: 1}]
+    tier: small
+    default_max_out: 256
+  chat-large:                            # 고가 등급 (복잡 추론)
+    deployments: [{provider: mock, model: mock-chat-large, weight: 1}]
+    tier: large
+    default_max_out: 1024
+  reasoner:                              # reasoning effort·thinking 예산 정규화 대상 (EC-MODEL-02)
+    deployments: [{provider: mock, model: mock-reasoner, weight: 1}]
+    tier: large
+  flaky-chat:                            # 폴백 시험용 — 1차는 항상 503
+    deployments: [{provider: mock, model: mock-503, weight: 1}]
+    fallbacks: [chat-default]
+  limited-chat:                          # 업스트림 429 시험용
+    deployments: [{provider: mock, model: mock-429, weight: 1}]
+  embed-default:                         # 임베딩 (X-KB) — mock 은 결정적 해싱 벡터, 실모델은 openai 공급자 alias 로
+    deployments: [{provider: mock, model: mock-embed, weight: 1}]
+    tier: small
+  planner-sloppy:                        # 약한 플래너 흉내 — JSON 앞뒤 군말 (하네스 보정·ablation 시험)
+    deployments: [{provider: mock, model: mock-planner-sloppy, weight: 1}]
+    tier: small
+  judge-default:                         # LLM-as-Judge (EV-JUDGE) — mock 은 결정적 루브릭 판정, 실모델은 alias 를 openai-main 등으로
+    deployments: [{provider: mock, model: mock-judge, weight: 1}]
+    tier: small
+  judge-lenient:                         # 배심원(PoLL) 구성용 변형 — 필수 표현 하나 이상이면 통과
+    deployments: [{provider: mock, model: mock-judge-lenient, weight: 1}]
+    tier: small
+  judge-length:                          # 배심원 변형 — 20자 이상·금지 표현 없음
+    deployments: [{provider: mock, model: mock-judge-length, weight: 1}]
+    tier: small
+  judge-biased:                          # 위치 편향 시험용 — pairwise 에서 항상 A
+    deployments: [{provider: mock, model: mock-judge-biased, weight: 1}]
+    tier: small
+  openai-main:                           # OPENAI_BASE_URL + OPENAI_API_KEYS 설정 시 사용
+    deployments: [{provider: openai, model: gpt-4.1-mini, weight: 1}]
+    fallbacks: [chat-default]
+
+# USD / 1M tokens. 과거 요청은 당시 effective_from 버전으로 계산. 값은 예시 — 운영 전 공급사 단가로 갱신.
+# cached_input = 캐시 읽기, cache_write = 캐시 쓰기 단가 (Anthropic 형: 읽기 0.1x · 쓰기 1.25x, OpenAI 형: 읽기 0.25x · 쓰기 없음)
+prices:
+  mock-planner:    [{effective_from: "2026-01-01", input: "0.50", output: "1.50", cached_input: "0.05", cache_write: "0.625"}]
+  mock-chat:       [{effective_from: "2026-01-01", input: "0.25", output: "1.00", cached_input: "0.025", cache_write: "0.3125"}]
+  mock-agent:      [{effective_from: "2026-01-01", input: "1.00", output: "3.00", cached_input: "0.10", cache_write: "1.25"}]
+  mock-chat-small: [{effective_from: "2026-01-01", input: "0.05", output: "0.20", cached_input: "0.005", cache_write: "0.0625"}]
+  mock-chat-large: [{effective_from: "2026-01-01", input: "3.00", output: "15.00", cached_input: "0.30", cache_write: "3.75"}]
+  mock-reasoner:   [{effective_from: "2026-01-01", input: "2.00", output: "8.00", cached_input: "0.50"}]
+  mock-embed:         [{effective_from: "2026-01-01", input: "0.02", output: "0"}]
+  mock-planner-sloppy: [{effective_from: "2026-01-01", input: "0.05", output: "0.20"}]
+  mock-judge:         [{effective_from: "2026-01-01", input: "0.10", output: "0.40"}]
+  mock-judge-lenient: [{effective_from: "2026-01-01", input: "0.10", output: "0.40"}]
+  mock-judge-length:  [{effective_from: "2026-01-01", input: "0.10", output: "0.40"}]
+  mock-judge-biased:  [{effective_from: "2026-01-01", input: "0.10", output: "0.40"}]
+  gpt-4.1-mini:    [{effective_from: "2026-01-01", input: "0.40", output: "1.60", cached_input: "0.10"}]
+
+# 모델 카탈로그 (FR-EC-MODEL-07) — 선택에 필요한 능력·지역·폐기 일정. 폐기 60일 전부터 경고.
+models:
+  mock-planner:    {provider: mock, context_window: 128000, max_output: 8192, modalities: [text], tools: false, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  mock-chat:       {provider: mock, context_window: 128000, max_output: 8192, modalities: [text], tools: false, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  mock-agent:      {provider: mock, context_window: 200000, max_output: 8192, modalities: [text], tools: true, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  mock-chat-small: {provider: mock, context_window: 32000, max_output: 4096, modalities: [text], tools: false, structured_output: true, regions: [kr, us, eu], tokenizer: approx-4c}
+  mock-chat-large: {provider: mock, context_window: 200000, max_output: 32000, modalities: [text, image], tools: true, structured_output: true, regions: [us], tokenizer: approx-4c, deprecation_date: "2026-11-15"}
+  mock-reasoner:   {provider: mock, context_window: 200000, max_output: 64000, modalities: [text], tools: true, structured_output: true, reasoning: true, regions: [us], tokenizer: approx-4c}
+  mock-embed:         {provider: mock, context_window: 8192, max_output: 0, modalities: [text], tools: false, structured_output: false, regions: [kr, us], tokenizer: approx-4c}
+  mock-planner-sloppy: {provider: mock, context_window: 32000, max_output: 4096, modalities: [text], tools: false, structured_output: false, regions: [kr, us], tokenizer: approx-4c}
+  mock-judge:         {provider: mock, context_window: 32000, max_output: 1024, modalities: [text], tools: false, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  mock-judge-lenient: {provider: mock, context_window: 32000, max_output: 1024, modalities: [text], tools: false, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  mock-judge-length:  {provider: mock, context_window: 32000, max_output: 1024, modalities: [text], tools: false, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  mock-judge-biased:  {provider: mock, context_window: 32000, max_output: 1024, modalities: [text], tools: false, structured_output: true, regions: [kr, us], tokenizer: approx-4c}
+  gpt-4.1-mini:    {provider: openai, context_window: 1047576, max_output: 32768, modalities: [text, image], tools: true, structured_output: true, regions: [us, eu], tokenizer: o200k_base}
+
+policy:
+  max_tokens_cap: 4096                   # 초과 요청은 cap 으로 치환 (mutation)
+  default_max_tokens: 512                # TPM 예약용
+  denied_params: [logit_bias]
+  payload_logging: "off"                 # off | masked | full (FR-GW-POL-05, 기본 off)
+
+# 경제성 (PRD §12.7 EC-*)
+econ:
+  model_policy:                          # 과업 유형 → 등급·기본 alias·상한 (Anthropic 권고: 좁은 과업 small · 일반 medium · 복잡 추론 large)
+    - {task_type: classify,  tier: small,  default_alias: chat-small,   max_tier: small,  max_effort: minimal, max_tokens: 64}
+    - {task_type: extract,   tier: small,  default_alias: chat-small,   max_tier: medium, max_effort: low,     max_tokens: 1024}
+    - {task_type: summarize, tier: medium, default_alias: chat-default, max_tier: medium, max_effort: low,     max_tokens: 1024}
+    - {task_type: code,      tier: medium, default_alias: chat-default, max_tier: large,  max_effort: medium,  max_tokens: 4096}
+    - {task_type: reasoning, tier: large,  default_alias: reasoner,     max_tier: large,  max_effort: high,    max_tokens: 8192}
+  routes:                                # 규칙 라우팅 (opt-in: chat-econ alias 또는 feature:classify 태그) — 짧고 도구 없는 요청은 저가 alias 로
+    - name: short-no-tools
+      from: [chat-econ]
+      to: chat-small
+      when: {max_input_tokens: 500, no_tools: true}
+    - name: tag-classify
+      from: ["*"]
+      to: chat-small
+      when: {tags: {feature: classify}}
+  effort_budgets: {minimal: 0, low: 1024, medium: 4096, high: 16384}
+  prompt_cache: {min_tokens: 1024}       # 이보다 짧은 prefix 는 캐시 키를 넣지 않음
+  exact_cache: {enabled: true, ttl_sec: 3600}   # temperature 0 요청만, Cache-Control: no-cache 로 우회
+  task_budget_tokens: 50000              # 과업(trace / x-atlas-task-id) 당 토큰 — 도식 기준값
+  soft_pct: 80                           # 예산 경고 임계
+  batch_discount: "0.5"                  # 공급사 Batch API 할인
+  batch: {poll_base_sec: 60, poll_max_sec: 1800, mock_delay_sec: 2, max_rows: 50000}
+
+retry:   {max_attempts: 3, base_ms: 250, max_ms: 2000}          # FR-GW-ROUTE-07
+circuit: {window_sec: 60, min_requests: 5, failure_ratio: 0.5, cooldown_sec: 30}

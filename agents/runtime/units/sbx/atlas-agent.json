@@ -1,0 +1,17 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "sbx", "unitId": "X-SBX", "layer": "X", "concept": "x-platform"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["sbx.run_code"]},
+    "harness": {"modelAlias": "chat-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {"limits": {"cpu_s": 60, "memory_mb": 1024, "timeout_s": 120}, "maxLimits": {"cpu_s": 300, "memory_mb": 1536, "timeout_s": 300},
+               "isolations": ["container"], "minIsolation": {"default": "container"}, "backend": "compose"},
+    "secrets": [{"name": "sandbox-token", "required": true}, {"name": "egress-admin-token", "required": true}],
+    "state": {"stateless": false, "store": "sql", "stateSchemaVersion": 1},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

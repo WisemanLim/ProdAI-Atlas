@@ -1,0 +1,227 @@
+name: release
+# 릴리스 파이프라인 (FR-PLT-REL-01~05·08, PKG-01·02·03·07·08)
+#   main push   → release-please 가 릴리스 PR 유지. PR 병합 시 태그 vX.Y.Z → 아래 전 단계 (beta 채널)
+#   schedule    → nightly 이미지 (채널 nightly)
+#   dispatch    → 채널 승격 (nightly→beta, beta→stable) — 재빌드 없이 digest 재태깅
+on:
+  push: { branches: [main] }
+  schedule: [{ cron: "0 18 * * *" }]   # 03:00 KST
+  workflow_dispatch:
+    inputs:
+      promote_from: { description: "승격 원본 채널 (nightly|beta)", required: false }
+      promote_to:   { description: "승격 대상 채널 (beta|stable)", required: false }
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write        # cosign keyless (Sigstore OIDC)
+  attestations: write
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+      version: ${{ steps.rp.outputs.major }}.${{ steps.rp.outputs.minor }}.${{ steps.rp.outputs.patch }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  meta:
+    needs: [release-please]
+    if: always() && (needs.release-please.outputs.created == 'true' || github.event_name == 'schedule')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      channel: ${{ steps.v.outputs.channel }}
+    steps:
+      - id: v
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then
+            echo "version=0.0.0-nightly.$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"; echo "channel=nightly" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ needs.release-please.outputs.version }}" >> "$GITHUB_OUTPUT"; echo "channel=beta" >> "$GITHUB_OUTPUT"
+          fi
+
+  images:
+    needs: [meta]
+    if: always() && needs.meta.result == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: atlas-manager,       context: apps,           file: apps/manager/Dockerfile.bundle }
+          - { image: atlas-gateway,       context: apps/gateway,   file: apps/gateway/Dockerfile }
+          - { image: atlas-console,       context: apps/console,   file: apps/console/Dockerfile }
+          - { image: atlas-agent-runtime, context: agents/runtime, file: agents/runtime/Dockerfile }
+          - { image: atlas-sandbox,       context: agents/sandbox, file: agents/sandbox/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ needs.meta.outputs.version }}
+          tags: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ needs.meta.outputs.version }}
+          push: true
+          provenance: mode=max
+      - uses: sigstore/cosign-installer@v3
+      - name: cosign keyless sign (digest)
+        run: cosign sign --yes "${REGISTRY}/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+      - name: SBOM (SPDX + CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: ${{ matrix.image }}.cdx.json
+          upload-artifact: true
+      - name: SBOM attest
+        run: cosign attest --yes --type cyclonedx --predicate "${{ matrix.image }}.cdx.json" "${REGISTRY}/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+      - name: license check
+        run: python3 scripts/license-check.py "${{ matrix.image }}.cdx.json"
+      - name: vulnerability scan (grype)
+        uses: anchore/scan-action@v6
+        with:
+          image: ${{ env.REGISTRY }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          fail-build: true
+          severity-cutoff: critical
+
+  binaries:
+    needs: [meta, release-please]
+    if: always() && needs.meta.outputs.channel == 'beta'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: console → Manager embed
+        working-directory: apps/console
+        run: corepack enable && pnpm install --frozen-lockfile && pnpm build && rm -rf ../manager/internal/ui/dist && cp -R dist ../manager/internal/ui/dist
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.26" }
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: sigstore/cosign-installer@v3
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          workdir: apps/manager
+          args: release --clean --skip=validate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ATLAS_VERSION: ${{ needs.meta.outputs.version }}
+      - name: cosign keyless sign checksums
+        working-directory: apps/manager/dist
+        run: |
+          f=$(ls atlas_*_checksums.txt)
+          cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          gh release upload "${{ needs.release-please.outputs.tag }}" "$f.sigstore.json" --clobber
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  wheel-and-bundle:
+    needs: [meta, release-please]
+    if: always() && needs.meta.outputs.channel == 'beta'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: wheel (prodai-agents)
+        working-directory: agents/runtime
+        run: uv build --wheel --out-dir ../../dist/wheel
+      - name: compose bundle
+        working-directory: agents/runtime
+        run: uv run --frozen python ../../scripts/make-bundle.py && tar -C ../../deploy -czf ../../dist/atlas-bundle-${{ needs.meta.outputs.version }}.tar.gz bundle
+      - run: gh release upload "${{ needs.release-please.outputs.tag }}" dist/wheel/*.whl dist/atlas-bundle-*.tar.gz --clobber
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  desktop:
+    needs: [meta, release-please]
+    if: always() && needs.meta.outputs.channel == 'beta'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest,   args: "--target universal-apple-darwin" }
+          - { os: windows-latest, args: "" }
+          - { os: ubuntu-22.04,   args: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}" }
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.26" }
+      - if: matrix.os == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: sidecar (atlas-manager) + console
+        shell: bash
+        run: bash apps/desktop/scripts/prepare.sh ${{ matrix.os == 'macos-latest' && 'universal' || '' }}
+        env: { ATLAS_VERSION: "${{ needs.meta.outputs.version }}" }
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ needs.release-please.outputs.tag }}
+          args: ${{ matrix.args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 코드서명·공증은 조직 시크릿이 있을 때만 (없으면 미서명 빌드)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+
+  channel:
+    needs: [meta, images]
+    if: always() && needs.images.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - run: |
+          ATLAS_REGISTRY=$REGISTRY python3 scripts/channels.py set ${{ needs.meta.outputs.channel }} ${{ needs.meta.outputs.version }}
+          # 채널 태그도 같은 digest 로
+          for img in atlas-manager atlas-gateway atlas-console atlas-agent-runtime atlas-sandbox; do
+            docker buildx imagetools create -t "$REGISTRY/$img:${{ needs.meta.outputs.channel }}" "$REGISTRY/$img:${{ needs.meta.outputs.version }}"
+          done
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with: { commit_message: "chore(release): channel ${{ needs.meta.outputs.channel }} = ${{ needs.meta.outputs.version }}", file_pattern: deploy/channels.json }
+
+  promote:
+    if: github.event_name == 'workflow_dispatch' && inputs.promote_from != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: sigstore/cosign-installer@v3
+      - name: 서명 검증 후 승격
+        run: |
+          for img in atlas-manager atlas-gateway atlas-console atlas-agent-runtime atlas-sandbox; do
+            d=$(python3 -c "import json;print(json.load(open('deploy/channels.json'))['channels']['${{ inputs.promote_from }}']['digests']['$img'])")
+            cosign verify "$REGISTRY/$img@$d" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@"
+          done
+          ATLAS_REGISTRY=$REGISTRY python3 scripts/channels.py promote ${{ inputs.promote_from }} ${{ inputs.promote_to }}
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with: { commit_message: "chore(release): promote ${{ inputs.promote_from }} → ${{ inputs.promote_to }}", file_pattern: deploy/channels.json }

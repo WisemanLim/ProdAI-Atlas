@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+data/
+test/**/logs/
+node_modules/
+**/node_modules/
+target/
+build/
+bin/
+obj/
+.venv/
+__pycache__/
+.review/

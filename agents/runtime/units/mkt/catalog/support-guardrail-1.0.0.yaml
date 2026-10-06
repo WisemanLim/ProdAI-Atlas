@@ -1,0 +1,16 @@
+kind: guardrail-policy
+name: support-guardrail
+version: 1.0.0
+title: 고객지원 가드레일 정책
+description: 고객지원 에이전트용 PII 마스킹·탈옥 차단 기본 정책
+unit_ids: [GR-IO, GR-PII, GR-JB]
+layer: L2
+requires: [GR-IO]
+changelog: 최초 공개
+params:
+  type: object
+  properties:
+    pii_action: {type: string, enum: [mask, block], default: mask}
+sbom: {bomFormat: CycloneDX, specVersion: "1.6", components: []}
+payload:
+  policy: {pii: {action: "{{params.pii_action}}"}, jailbreak: {action: block}, toxicity: {action: block}}

@@ -1,0 +1,39 @@
+# atlas-manager 번들 — 콘솔 SPA 를 embed.FS 로 내장한 단일 바이너리 (FR-PLT-CON-01 · PLT-PKG-03). 빌드 컨텍스트: apps/
+# dev = local 모드(go run, 소스 바인드 — 콘솔은 :5173 별도), runtime = prod 모드
+FROM golang:1.26 AS dev
+WORKDIR /src
+ENV GOFLAGS=-mod=mod
+COPY manager/go.mod manager/go.sum* ./
+RUN go mod download || true
+COPY manager/ ./
+EXPOSE 8080
+CMD ["sh", "-c", "go mod tidy && go run ./cmd/server"]
+
+FROM --platform=$BUILDPLATFORM node:22-alpine AS console
+WORKDIR /console
+RUN corepack enable
+COPY console/package.json console/pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
+COPY console/ ./
+RUN pnpm build
+
+FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+ARG VERSION=0.0.0-dev TARGETOS TARGETARCH
+WORKDIR /src
+COPY manager/go.mod manager/go.sum ./
+RUN go mod download
+COPY manager/ ./
+COPY --from=console /console/dist ./internal/ui/dist
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/server ./cmd/server
+
+FROM alpine:3.20 AS runtime
+ARG VERSION=0.0.0-dev
+LABEL org.opencontainers.image.title="atlas-manager" org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/prodai/atlas" org.opencontainers.image.licenses="Apache-2.0" \
+      org.prodai.agent.unit-id="PLT-MGR"
+RUN adduser -D -u 65532 app && mkdir -p /app/data && chown app /app/data
+COPY --from=build /out/server /server
+USER 65532
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD ["/server", "-healthcheck"]
+ENTRYPOINT ["/server"]

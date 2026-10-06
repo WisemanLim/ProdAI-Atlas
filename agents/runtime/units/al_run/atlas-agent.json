@@ -1,0 +1,73 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {
+    "name": "al-run",
+    "unitId": "AL-RUN",
+    "layer": "L1",
+    "concept": "01-agentic-loops",
+    "labels": {
+      "atlas.prodai.io/owner": "team-runtime"
+    }
+  },
+  "spec": {
+    "version": "0.1.0",
+    "artifacts": {
+      "wheel": "prodai-agent-al-run==0.1.0"
+    },
+    "agentCard": {
+      "path": "/.well-known/agent-card.json",
+      "signed": false,
+      "skills": [
+        "loop.run",
+        "loop.resume"
+      ]
+    },
+    "interfaces": [
+      {
+        "binding": "JSONRPC",
+        "port": 8000,
+        "path": "/a2a"
+      }
+    ],
+    "harness": {
+      "modelAlias": "agent-default",
+      "tools": [
+        "builtin:*"
+      ],
+      "guardrailPolicyRef": null
+    },
+    "config": {
+      "maxTurns": 25,
+      "endTurnPolicy": "verify_then_accept",
+      "permissionMode": "default"
+    },
+    "health": {
+      "liveness": "/healthz",
+      "readiness": "/readyz",
+      "startupTimeoutSec": 60
+    },
+    "state": {
+      "stateless": false,
+      "store": "sql",
+      "stateSchemaVersion": 1
+    },
+    "drivers": {
+      "serverlessEligible": false,
+      "supported": [
+        "local",
+        "compose"
+      ]
+    },
+    "compat": {
+      "agentCore": ">=0.1 <1.0",
+      "a2a": "1.0"
+    },
+    "secrets": [
+      {
+        "name": "mcp-oauth-client-secret",
+        "required": false
+      }
+    ]
+  }
+}

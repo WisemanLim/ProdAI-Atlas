@@ -1,0 +1,16 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "bl", "unitId": "BL-MODEL", "layer": "L3", "concept": "09-bitter-lesson"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["bl.validate_rule", "bl.best_of_n"]},
+    "harness": {"modelAlias": "chat-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {"eolWarnDays": 60, "canaryIntervalS": 30},
+    "secrets": [{"name": "gateway-admin-token", "required": true}],
+    "state": {"stateless": false, "store": "sql", "stateSchemaVersion": 1},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

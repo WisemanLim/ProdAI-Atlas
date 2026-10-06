@@ -1,0 +1,98 @@
+# ===== common / 공통 (env·secrets·logs·editor) =====
+.env
+.env.*
+!.env.example
+*.local
+# local 모드 env 는 시크릿 없음 → 커밋(CI 의 make test 용). .env.prod 는 비커밋 / commit .env.local, never .env.prod
+!.env.local
+*.pem
+*.key
+secrets.*
+.secrets/
+*.log
+logs/
+tmp/
+.tmp/
+*.pid
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.swp
+*.swo
+*~
+# test 원본 로그 비커밋 / raw test logs (test-runner standard)
+test/**/logs/
+# local SQLite 데이터 / local sqlite data
+/data/
+
+# ===== AI / LLM 도구 (Claude Code·OMC·Cursor·Copilot·Aider 등) =====
+# oh-my-claudecode 세션·상태 / OMC sessions & state
+.omc/
+# Aider 작업 파일 / Aider working files
+.aider*
+# Continue (VS Code AI extension)
+.continue/
+# Codeium
+.codeium/
+# Tabnine
+.tabnine/
+# Sourcegraph Cody
+.sourcegraph/
+# Cursor workspace cache (rules/ 는 커밋 권장 / cursor rules dir is committable)
+.cursor/workspaceStorage/
+# Copilot (보통 user-home 이지만 프로젝트 캐시 포함 / project-level cache)
+.github/copilot-workspace/
+
+# ===== platform / 플랫폼 (macOS·Windows·Linux) =====
+# --- macOS ---
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+Icon?
+.localized
+Network Trash Folder/
+Temporary Items/
+.apdisk
+# --- Windows ---
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+[Cc]onfig.msi
+NTUSER.DAT*
+ntuser.dat*
+ntuser.ini
+*.stackdump
+# --- Linux ---
+*~
+.directory
+.Trash-*
+.nfs*
+.fuse_hidden*
+
+# ===== Go =====
+bin/
+*.exe
+*.exe~
+*.test
+*.out
+vendor/
+go.work.sum
+# Air (live-reload)
+tmp/main
+tmp/air.log
+# GoLand / IntelliJ
+.idea/
+
+
+# GoReleaser before-hook 복사본
+/LICENSE
+/README.en.md

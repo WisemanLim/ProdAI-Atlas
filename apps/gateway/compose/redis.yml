@@ -1,0 +1,5 @@
+# extras/redis — 선택 인프라 (scaffold --extras redis). make 가 compose/*.yml 을 자동 포함한다.
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports: ["${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"]

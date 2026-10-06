@@ -1,0 +1,28 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  service:
+    # 서비스 단독 시험 (각 디렉터리의 wds 표준 Makefile)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [apps/manager, agents/runtime]
+    defaults: { run: { working-directory: "${{ matrix.dir }}" } }
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -f .env.prod || cp .env.example .env.prod
+      - run: make preflight
+      - run: make test
+      - run: docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.prod build
+  stack:
+    # 루트 통합 스택 (manager + agent-runtime + console + redis + nats + db)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: test -f .env.prod || cp .env.example .env.prod
+      - run: make preflight
+      - run: make test-all
+      - run: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f compose/nats.yml -f compose/redis.yml --env-file .env.prod build

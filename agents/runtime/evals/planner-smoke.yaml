@@ -1,0 +1,21 @@
+# AL-PLAN 회귀 스위트 (eval-as-code, FR-EV-REG-01) — 계획 JSON 스키마·단계 수·DoD 존재를 검사
+name: planner-smoke
+dataset: {name: planner-golden}          # version 생략 = 최신 스냅샷
+targets:
+  - id: gateway-planner                  # 프롬프트 타깃 — Gateway alias 직접
+    type: prompt
+    model: planner-default
+    response_format: json_object
+    template: "{{input.goal}}"
+  - id: al-plan-agent                    # 에이전트 타깃 — A2A loop.plan
+    type: agent
+    url: http://agent-al-plan:8000
+    skill: loop.plan
+    data_template: {goal: "{{input.goal}}"}
+scorers:
+  - type: json_schema
+    schema: {type: object, required: [steps, dod], properties: {steps: {type: array, minItems: 1}, dod: {type: array, minItems: 1}}}
+  - type: regex
+    pattern: '"steps"'
+epochs: 3
+thresholds: {pass_rate: 1.0, pass_hat_k: 1.0}

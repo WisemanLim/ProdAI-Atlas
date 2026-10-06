@@ -1,0 +1,45 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {
+    "name": "al-act",
+    "unitId": "AL-ACT",
+    "layer": "L1",
+    "concept": "01-agentic-loops"
+  },
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [
+      {
+        "binding": "JSONRPC",
+        "port": 8000,
+        "path": "/a2a"
+      }
+    ],
+    "agentCard": {
+      "path": "/.well-known/agent-card.json",
+      "signed": false,
+      "skills": [
+        "loop.act"
+      ]
+    },
+    "health": {
+      "liveness": "/healthz",
+      "readiness": "/readyz",
+      "startupTimeoutSec": 60
+    },
+    "state": {
+      "stateless": true
+    },
+    "drivers": {
+      "supported": [
+        "local",
+        "compose"
+      ]
+    },
+    "compat": {
+      "agentCore": ">=0.1 <1.0",
+      "a2a": "1.0"
+    }
+  }
+}

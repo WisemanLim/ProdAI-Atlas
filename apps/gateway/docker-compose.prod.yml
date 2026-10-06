@@ -1,0 +1,5 @@
+# atlas-gateway — prod 모드: runtime 스테이지(alpine) + DB_ENGINE RDBMS (sqlite)
+services:
+  api:
+    env_file: [".env.prod"]
+    restart: unless-stopped

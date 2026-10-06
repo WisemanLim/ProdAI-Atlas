@@ -1,0 +1,23 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "mkt", "unitId": "X-MKT", "layer": "X", "concept": "x-platform"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["mkt.install"]},
+    "harness": {"modelAlias": "chat-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {
+      "requireSignature": true,
+      "trustedBuilders": ["https://prodai.io/atlas/mkt-builder", "https://github.com/slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@refs/tags/v2.1.0"],
+      "blockedComponents": {"lodash@4.17.20": "CVE-2021-23337", "log4j-core@2.14.1": "CVE-2021-44228", "requests@2.19.0": "CVE-2018-18074"},
+      "scanBlockScore": 70,
+      "upgradeRequireEvalPass": true,
+      "mcpRegistryUrl": "http://fake-upstream:8000/mcp-registry"
+    },
+    "secrets": [{"name": "mkt-admin-token", "required": true}, {"name": "mcp-reg-admin-token", "required": false}],
+    "state": {"stateless": false, "store": "sql", "stateSchemaVersion": 1},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

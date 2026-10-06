@@ -1,0 +1,7 @@
+# apps/ 컨텍스트(manager 번들 빌드)용
+gateway
+**/node_modules
+console/dist
+**/.env
+**/.env.*
+**/test/**/logs

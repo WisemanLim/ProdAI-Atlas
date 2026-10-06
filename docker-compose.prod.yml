@@ -1,0 +1,336 @@
+# prodai-atlas — prod 모드: runtime 스테이지 + 공유 PostgreSQL (RLS 테넌트 격리, PRD §14.5)
+services:
+  manager:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${MANAGER_DATABASE_URL:?MANAGER_DATABASE_URL 필요 / required}
+    volumes: ["managerdata:/app/data", "baotokens:/run/secrets/atlas/bao:ro"]
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      openbao-init: { condition: service_completed_successfully }
+
+  agent-al-plan:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-al-run:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-mcp-reg:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-gr:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp, /run/secrets/atlas]   # 중개로 받은 비밀 파일(0400) — 메모리에만
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-ob:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-ev:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-bl:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-sbx:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-mcp-sys:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  mcp-sbx:
+    restart: unless-stopped
+
+  egress-proxy:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  agent-mkt:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-rpt:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-mcp-gw:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+      ATLAS_MCP_GW_AUTH: required
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  mcp-protected:
+    restart: unless-stopped
+
+  agent-kb:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-mat:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  flagd:
+    read_only: true
+    restart: unless-stopped
+
+  mcp-demo:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    restart: unless-stopped
+
+  mcp-tool:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    restart: unless-stopped
+
+  gateway:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    env_file: [".env.prod"]
+    volumes: ["baotokens:/run/secrets/atlas/bao:ro"]
+    restart: unless-stopped
+    depends_on:
+      openbao-init: { condition: service_completed_successfully }
+
+  console:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp]
+    restart: unless-stopped
+
+  agent-ma-orch:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp, /run/secrets/atlas]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-ma-merge:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp, /run/secrets/atlas]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-ma-res:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp, /run/secrets/atlas]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-ma-cr:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp, /run/secrets/atlas]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  agent-ma-anl:
+    read_only: true                 # 읽기 전용 rootfs (FR-PLT-PKG-01) — 쓰기는 데이터 볼륨·/tmp 만
+    tmpfs: [/tmp, /run/secrets/atlas]
+    env_file: [".env.prod"]
+    environment:
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?RUNTIME_DATABASE_URL 필요 / required}
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+
+  sandbox:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  nats:
+    restart: unless-stopped
+
+  db:
+    image: ${DB_IMAGE:-pgvector/pgvector:pg17}   # pgvector 포함 PostgreSQL 17 (X-KB 벡터 검색)
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER 필요 / required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 필요 / required}
+      POSTGRES_DB: ${DB_NAME:-app}
+    volumes: ["dbdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  # IAM 저장소 — 공유 PostgreSQL 에 keycloak·openfga 데이터베이스를 만든다 (1회성)
+  iam-db-init:
+    image: ${DB_IMAGE:-pgvector/pgvector:pg17}   # pgvector 포함 PostgreSQL 17 (X-KB 벡터 검색)
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    entrypoint: ["sh", "-c", "for d in keycloak openfga; do psql -h db -U \"$$DB_USER\" -d \"$$DB_NAME\" -tAc \"SELECT 1 FROM pg_database WHERE datname='$$d'\" | grep -q 1 || psql -h db -U \"$$DB_USER\" -d \"$$DB_NAME\" -c \"CREATE DATABASE $$d\"; done"]
+    env_file: [".env.prod"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  keycloak:
+    command: ["start", "--import-realm", "--hostname-strict=false"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/keycloak
+      KC_DB_USERNAME: ${DB_USER}
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      iam-db-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  openfga-migrate:
+    image: openfga/openfga:v1.10.2
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/openfga?sslmode=disable
+    depends_on:
+      iam-db-init: { condition: service_completed_successfully }
+    restart: "no"
+
+  openfga:
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/openfga?sslmode=disable
+    depends_on:
+      openfga-migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  # 비밀 저장소 OpenBao (FR-PLT-SEC-01) — file 스토리지, 초기화·봉인 해제는 openbao-init
+  openbao:
+    image: openbao/openbao:2.4
+    command: ["server"]
+    environment:
+      BAO_LOCAL_CONFIG: '{"storage":{"file":{"path":"/openbao/file"}},"listener":[{"tcp":{"address":"0.0.0.0:8200","tls_disable":true}}],"disable_mlock":true,"ui":false,"api_addr":"http://openbao:8200"}'
+    volumes: ["baodata:/openbao/file"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8200/v1/sys/health?sealedcode=200&uninitcode=200' >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  openbao-init:
+    image: openbao/openbao:2.4
+    entrypoint: ["sh", "/init/init.sh"]
+    environment:
+      BAO_ADDR: http://openbao:8200
+    volumes: ["./deploy/openbao:/init:ro", "baokeys:/keys", "baotokens:/tokens"]
+    depends_on:
+      openbao: { condition: service_healthy }
+    restart: "no"
+
+volumes:
+  baodata:
+  baokeys:
+  baotokens:
+  dbdata:

@@ -1,0 +1,31 @@
+# GR-POL 기본 정책 팩 baseline-v1 (FR-GR-POL-07, 도식 "Add early; costly to retrofit")
+# 정책 번들이 없는 테넌트에 자동 적용. 약화하려면 새 번들을 게시(버전·게시자 기록)해야 한다.
+version: "1.0.0"
+name: baseline-v1
+store_raw: false                    # 판정 로그에 원문 미보관 (해시만)
+pii:
+  threshold: 0.5
+  operators: {}                     # 엔티티별 기본 연산자(gr_pii.DEFAULT_OPERATORS)
+boundaries:
+  input:
+    - {checker: jailbreak, mode: block, tier: 0, threshold: 0.6}
+    - {checker: pii, mode: transform, tier: 0}
+    - {checker: safety, mode: block, tier: 1}
+  output:
+    - {checker: pii, mode: transform, tier: 0}
+    - {checker: safety, mode: block, tier: 1}
+    - {checker: output_format, mode: block, tier: 0}
+  tool_call:
+    - {checker: tool_policy, mode: block, tier: 0}
+  tool_result:
+    - {checker: pii, mode: transform, tier: 0}
+    - {checker: jailbreak, mode: monitor, tier: 0, threshold: 0.6}
+    - {checker: spotlight, mode: transform, tier: 0, spotlight: delimit}
+  retrieval:
+    - {checker: pii, mode: transform, tier: 0}
+tools:
+  defaults:
+    irreversible: require_approval  # 비가역 도구는 사람 승인 (FR-GR-POL-05)
+    untrusted_args_write: require_approval   # 비신뢰 출처 인자가 쓰기 도구로 흐르면 승인
+  rules:
+    - {match: "*", when: "args.get('path') and not str(args.get('path')).startswith('/workspace')", action: deny, reason: "작업 디렉터리 밖 경로"}

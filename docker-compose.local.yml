@@ -1,0 +1,195 @@
+# prodai-atlas — local 모드: 서비스별 SQLite + dev 스테이지 + 소스 바인드(핫리로드)
+services:
+  manager:
+    build: { target: dev }
+    env_file: ["./apps/manager/.env.local"]
+    volumes:
+      - ./apps/manager:/src
+      - gomod:/go/pkg/mod
+      - managerdata:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health >/dev/null"]
+      start_period: 60s
+
+  gateway:
+    build: { target: dev }
+    env_file: ["./apps/gateway/.env.local"]
+    volumes:
+      - ./apps/gateway:/src
+      - gomod:/go/pkg/mod
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health >/dev/null"]
+      start_period: 60s
+
+  agent-al-plan:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - runtimedata:/app/data
+
+  agent-al-run:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - alrundata:/app/data
+
+  agent-mcp-reg:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - mcpregdata:/app/data
+
+  agent-gr:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - grdata:/app/data
+
+  agent-ob:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - obdata:/app/data
+
+  agent-ev:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - evdata:/app/data
+
+  agent-sbx:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - sbxdata:/app/data
+
+  agent-mcp-sys:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - mcpsysdata:/app/data
+
+  mcp-sbx:
+    build: { target: dev }
+    volumes:
+      - ./agents/runtime:/app:ro
+
+  agent-mkt:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - mktdata:/app/data
+
+  agent-rpt:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - rptdata:/app/data
+
+  agent-mcp-gw:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - mcpgwdata:/app/data
+
+  mcp-protected:
+    build: { target: dev }
+    volumes:
+      - ./agents/runtime:/app:ro
+
+  agent-kb:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - kbdata:/app/data
+
+  agent-mat:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - matdata:/app/data
+
+  agent-bl:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - bldata:/app/data
+
+  mcp-demo:
+    build: { target: dev }
+    volumes: ["./agents/runtime:/app"]
+
+  mcp-tool:
+    build: { target: dev }
+    volumes: ["./agents/runtime:/app"]
+
+  console:
+    build: { target: dev }
+    environment:
+      MANAGER_URL: http://manager:8080
+      GATEWAY_URL: http://gateway:8080
+    volumes:
+      - ./apps/console:/app
+      - consolenm:/app/node_modules
+
+  agent-ma-orch:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - maorchdata:/app/data
+
+  agent-ma-merge:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - mamergedata:/app/data
+
+  agent-ma-res:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - maresdata:/app/data
+
+  agent-ma-cr:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - macrdata:/app/data
+
+  agent-ma-anl:
+    build: { target: dev }
+    env_file: ["./agents/runtime/.env.local"]
+    volumes:
+      - ./agents/runtime:/app
+      - maanldata:/app/data
+
+  keycloak:
+    command: ["start-dev", "--import-realm"]      # 개발 모드(H2 파일 DB)
+    volumes: ["keycloakdata:/opt/keycloak/data", "./deploy/keycloak:/opt/keycloak/data/import:ro"]   # 데이터 볼륨은 이미지 소유권(uid 1000) 복사
+
+  openfga:
+    environment:
+      OPENFGA_DATASTORE_ENGINE: memory           # 로컬은 휘발 — 구조 튜플은 Manager 기동 시 다시 맞춘다
+
+volumes:
+  keycloakdata:
+  gomod:
+  consolenm:

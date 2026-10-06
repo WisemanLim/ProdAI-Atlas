@@ -1,0 +1,14 @@
+# atlas-manager — 공통 정의 (make local-all | make prod-all)
+services:
+  api:
+    build: { context: ., dockerfile: Dockerfile, target: runtime }
+    image: atlas-manager-api:${APP_ENV:-local}
+    ports: ["${BIND_HOST:-127.0.0.1}:${API_PORT:-8080}:8080"]
+    volumes: ["appdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "/server", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+volumes:
+  appdata:

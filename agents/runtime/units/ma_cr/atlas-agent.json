@@ -1,0 +1,14 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "ma-cr", "unitId": "MA-CR", "layer": "L1", "concept": "03-multi-agent"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["ma.code_review"]},
+    "harness": {"modelAlias": "chat-default", "tools": ["diff.read"], "guardrailPolicyRef": null},
+    "config": {"maxIssues": 200},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

@@ -1,0 +1,58 @@
+# GoReleaser v2 (FR-PLT-PKG-03 · PLT-REL-03) — atlas CLI · atlas-manager(콘솔 내장) 단일 바이너리 6타깃 + deb/rpm + 체크섬 + SBOM.
+# 콘솔 dist 는 scripts/release-snapshot.sh (또는 CI) 가 internal/ui/dist 로 먼저 복사한다.
+version: 2
+project_name: atlas
+before:
+  hooks:
+    - go mod download
+    # 아카이브 files 는 프로젝트 밖 경로를 glob 하지 못한다 → 루트 문서를 복사 (gitignore)
+    - cp ../../LICENSE ../../README.en.md .
+builds:
+  - id: atlas
+    main: ./cmd/atlas
+    binary: atlas
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+  - id: atlas-manager
+    main: ./cmd/server
+    binary: atlas-manager
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+archives:
+  - id: atlas
+    ids: [atlas, atlas-manager]
+    name_template: "atlas_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.en.md]
+checksum:
+  name_template: "atlas_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+nfpms:
+  - id: atlas
+    ids: [atlas, atlas-manager]
+    package_name: prodai-atlas
+    vendor: ProdAI Atlas
+    homepage: https://github.com/prodai/atlas
+    maintainer: ProdAI Atlas <atlas@prodai.example>
+    description: ProdAI Atlas — atlas CLI 와 Agent Manager(콘솔 내장)
+    license: Apache-2.0
+    formats: [deb, rpm]
+sboms:
+  - id: archives
+    artifacts: archive            # syft 로 SPDX JSON (CI 이미지에 syft 포함)
+snapshot:
+  version_template: "{{ .Env.ATLAS_VERSION }}-snapshot"   # git 태그 없는 리허설은 VERSION 파일 기준
+release:
+  github: { owner: prodai, name: atlas }
+  prerelease: auto                # -beta.N · -nightly 는 프리릴리스
+changelog:
+  disable: true                   # release-please 가 CHANGELOG 를 만든다

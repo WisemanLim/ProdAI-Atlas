@@ -1,0 +1,19 @@
+# extras/otel-collector — OB-TRACE OTLP 수집 (PRD §14 · FR-OB-TRACE-01). make 가 compose/*.yml 을 자동 포함한다.
+services:
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.136.0}
+    command: ["--config=/etc/otelcol/collector.yaml"]
+    user: "0:0"   # file 싱크(회귀 시험용)를 named volume 에 쓰기 위함
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-atlas}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD 필요}
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    volumes:
+      - ./deploy/otel/collector.yaml:/etc/otelcol/collector.yaml:ro
+      - otelsink:/data
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${OTLP_GRPC_PORT:-4317}:4317"
+      - "${BIND_HOST:-127.0.0.1}:${OTLP_HTTP_PORT:-4318}:4318"
+volumes:
+  otelsink:

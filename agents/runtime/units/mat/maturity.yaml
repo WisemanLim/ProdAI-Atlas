@@ -1,0 +1,63 @@
+# MAT 성숙도 판정 정의 (FR-MAT-01·02·05·06) — 판정은 모두 수집된 사실(facts) 위의 식(units.bl.expr). 사실이 없으면 unknown.
+attributes:                       # 4속성 점수 = 충족 항목 가중치 합 / 전체 × 100
+  reliable:
+    - {id: golden_set_50, weight: 2, when: "ev_approved_items_max >= 50", desc: "승인 골든셋 50건 이상인 데이터셋"}
+    - {id: regression_pass_90, weight: 2, when: "ev_latest_pass_rate >= 0.9", desc: "최근 회귀 통과율 90% 이상"}
+    - {id: judge_calibrated, weight: 1, when: "ev_judges_trusted >= 1", desc: "사람 일치도 보정된 judge (κ ≥ 0.6)"}
+    - {id: online_eval, weight: 1, when: "ev_online_rules >= 1", desc: "온라인 judge 샘플링 규칙"}
+    - {id: loop_runtime, weight: 1, when: "concept_01_agentic_loops >= 1", desc: "종료 조건을 가진 루프 런타임 배포"}
+  observable:
+    - {id: traces_flowing, weight: 2, when: "ob_requests_24h > 0", desc: "24시간 내 LLM 호출 trace 수집"}
+    - {id: genai_semconv, weight: 1, when: "ob_input_tokens_24h > 0", desc: "gen_ai semconv(토큰·모델) 기록"}
+    - {id: slo_defined, weight: 1, when: "ob_slos >= 1", desc: "SLO 정의"}
+    - {id: alerts_defined, weight: 1, when: "ob_alert_rules >= 1", desc: "경보 규칙"}
+    - {id: eval_runs, weight: 1, when: "ev_runs_30d >= 1", desc: "30일 내 회귀 실행"}
+  cost_aware:
+    - {id: budgets, weight: 2, when: "gw_budgets >= 1", desc: "계층 예산"}
+    - {id: key_budget, weight: 1, when: "gw_key_budgets >= 1", desc: "키 단위 예산"}
+    - {id: cache_hit, weight: 1, when: "gw_cache_hit_ratio >= 0.2", desc: "prompt cache 적중률 20% 이상"}
+    - {id: compute_policy, weight: 1, when: "gw_compute_policies >= 1", desc: "계산(effort) 정책"}
+    - {id: cost_tracked, weight: 1, when: "ob_cost_24h > 0", desc: "요청 비용 귀속"}
+  safe:
+    - {id: guardrails_active, weight: 2, when: "gr_verdicts >= 1", desc: "가드레일 판정 기록"}
+    - {id: mcp_allowlist, weight: 1, when: "mcp_allowlisted >= 1", desc: "MCP 허용목록(Shadow MCP 차단)"}
+    - {id: hitl_inbox, weight: 1, when: "mgr_approvals_decided >= 1", desc: "고위험 행동 승인함 사용"}
+    - {id: audit_chain, weight: 2, when: "mgr_audit_valid == True", desc: "해시 체인 감사 무결성"}
+
+stages:                           # 게이트를 모두 충족해야 다음 단계 (L0 은 기본)
+  - {level: 1, name: "Governed Assistants", phase: Production, gates: [
+      {id: gateway_traffic, when: "ob_requests_24h > 0", role: platform, weeks: 1, task: "모든 LLM 호출을 AI Gateway 로 (가상키 발급)"},
+      {id: guardrails, when: "gr_verdicts >= 1", role: security, weeks: 2, task: "입출력 가드레일 정책 적용"},
+      {id: audit, when: "mgr_audit_valid == True", role: security, weeks: 1, task: "감사 해시 체인 검증"},
+      {id: budgets, when: "gw_budgets >= 1", role: finops, weeks: 1, task: "조직·프로젝트 예산 설정"}]}
+  - {level: 2, name: "Tool-using Agents", phase: Production, gates: [
+      {id: golden_set_50, when: "ev_approved_items_max >= 50", role: ai_qa, weeks: 3, task: "승인 골든셋 50건 구축"},
+      {id: regression_pass_90, when: "ev_latest_pass_rate >= 0.9", role: ai_qa, weeks: 2, task: "회귀 통과율 90% 달성"},
+      {id: traces_full, when: "ob_requests_24h > 0 and ob_input_tokens_24h > 0", role: platform, weeks: 1, task: "trace·gen_ai semconv 100% 수집"},
+      {id: key_budget, when: "gw_key_budgets >= 1", role: finops, weeks: 1, task: "키별 예산"},
+      {id: loop_runtime, when: "concept_01_agentic_loops >= 1", role: platform, weeks: 2, task: "루프 런타임(종료 조건·HITL) 배포"},
+      {id: mcp_allowlist, when: "mcp_allowlisted >= 1", role: security, weeks: 1, task: "MCP 서버 승인·허용목록"}]}
+  - {level: 3, name: "Optimized Production", phase: Compound, gates: [
+      {id: judge_calibrated, when: "ev_judges_trusted >= 1", role: ai_qa, weeks: 2, task: "judge 사람 일치도 보정"},
+      {id: online_eval, when: "ev_online_rules >= 1", role: ai_qa, weeks: 1, task: "온라인 judge 샘플링"},
+      {id: cache_hit, when: "gw_cache_hit_ratio >= 0.2", role: finops, weeks: 2, task: "prompt cache 적중률 20%"},
+      {id: compute_policy, when: "gw_compute_policies >= 1", role: finops, weeks: 1, task: "계산 정책(effort·추론 예산)"},
+      {id: model_swap, when: "bl_candidates_decided >= 1 and bl_promoted_regressions == 0", role: platform, weeks: 2, task: "후보 평가 기반 모델 교체(회귀 0)"},
+      {id: slo_defined, when: "ob_slos >= 1", role: platform, weeks: 1, task: "SLO·번레이트 경보"},
+      {id: trace_promotion, when: "ev_trace_promotions_30d >= 1", role: ai_qa, weeks: 1, task: "실패 trace → 골든셋 승격 루프"}]}
+  - {level: 4, name: "Autonomous Multi-agent", phase: Compound, gates: [
+      {id: multi_agent, when: "concept_03_multi_agent >= 1", role: platform, weeks: 3, task: "오케스트레이터·서브에이전트 배포"},
+      {id: a2a_signed, when: "mgr_a2a_signed >= 3", role: security, weeks: 1, task: "서명 Agent Card 3개 이상"},
+      {id: hitl_inbox, when: "mgr_approvals_decided >= 1", role: security, weeks: 1, task: "고위험 행동 승인함 운영"},
+      {id: harness_externalized, when: "bl_prompts_production >= 1", role: platform, weeks: 1, task: "프롬프트 레지스트리 게시(게이트 통과)"}]}
+
+metrics:                          # 전사 공통 지표 정의 (FR-MAT-06) — 대시보드·스코어카드·MAT 가 같은 정의
+  - {name: task_success_rate, fact: ev_task_success_rate, unit: ratio, definition: "회귀 스위트 타깃별 최신 실행 통과율 평균 (EV scorecard)"}
+  - {name: cost_per_task, fact: ev_cost_per_task, unit: usd, definition: "회귀 실행 비용 / 시행 수 평균 (EV scorecard)"}
+  - {name: cache_hit_rate, fact: gw_cache_hit_ratio, unit: ratio, definition: "prompt cache 읽기 토큰 / 입력 토큰 (Gateway econ KPI 최댓값)"}
+  - {name: tool_error_rate, fact: run_failure_rate, unit: ratio, definition: "루프 런 중 failed·blocked 비율 (AL-RUN)"}
+  - {name: guardrail_block_rate, fact: gr_block_rate, unit: ratio, definition: "가드레일 판정 중 block 비율 (GR-IO 최근 200건)"}
+  - {name: hitl_approval_latency, fact: mgr_hitl_latency_s, unit: seconds, definition: "승인 요청 → 결정 중앙값 (Manager 승인함)"}
+  - {name: turns_to_completion, fact: run_avg_turns, unit: turns, definition: "성공한 루프 런의 평균 턴 수 (AL-RUN)"}
+
+concepts: ["01-agentic-loops", "02-mcp", "03-multi-agent", "04-ai-gateway", "05-inference-economics", "06-evals", "07-guardrails", "08-observability", "09-bitter-lesson", "a2a"]

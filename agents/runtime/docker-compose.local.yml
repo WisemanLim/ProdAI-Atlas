@@ -1,0 +1,8 @@
+# atlas-agent-runtime — local 모드: SQLite + dev 스테이지 + 소스 바인드(핫리로드)
+services:
+  api:
+    build: { target: dev }
+    env_file: [".env.local"]
+    volumes:
+      - ./:/app
+      - appdata:/app/data

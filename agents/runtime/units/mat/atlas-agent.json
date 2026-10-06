@@ -1,0 +1,16 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "mat", "unitId": "MAT", "layer": "band", "concept": "maturity"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["mat.assess"]},
+    "harness": {"modelAlias": "chat-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {"cacheS": 30, "snapshotCheckS": 3600},
+    "secrets": [{"name": "gateway-admin-token", "required": true}],
+    "state": {"stateless": false, "store": "sql", "stateSchemaVersion": 1},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

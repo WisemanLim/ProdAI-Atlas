@@ -1,0 +1,22 @@
+# atlas-agent-runtime — prod 모드: runtime 스테이지 + DB_ENGINE RDBMS (postgres)
+services:
+  api:
+    env_file: [".env.prod"]
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+  db:
+    image: ${DB_IMAGE:-postgres:17-alpine}
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER 필요 / required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 필요 / required}
+      POSTGRES_DB: ${DB_NAME:-app}
+    volumes: ["dbdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+volumes:
+  dbdata:

@@ -1,0 +1,14 @@
+# atlas-agent-runtime — 공통 정의 (모드별 오버레이와 함께 사용: make local-all | make prod-all)
+services:
+  api:
+    build: { context: ., dockerfile: Dockerfile, target: runtime }
+    image: atlas-agent-runtime-api:${APP_ENV:-local}
+    ports: ["${BIND_HOST:-127.0.0.1}:${API_PORT:-8000}:8000"]
+    volumes: ["appdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+volumes:
+  appdata:

@@ -1,0 +1,25 @@
+kind: mcp-server
+name: weather-mcp
+version: 1.0.0
+title: 날씨·문서 검색 MCP 서버
+description: 데모 MCP 서버를 사내 레지스트리에 등록 (설치 = MCP-REG 등록·스캔)
+unit_ids: [MCP-REG, MCP-HOST]
+layer: L1
+requires: [MCP-REG]
+changelog: 최초 공개
+params:
+  type: object
+  required: [server_name]
+  properties:
+    server_name: {type: string, title: 레지스트리 이름, pattern: "^[a-z0-9.-]+/[a-z0-9-]+$", default: io.prodai/weather}
+    url: {type: string, title: MCP URL, default: "http://mcp-demo:8000/mcp"}
+sbom:
+  bomFormat: CycloneDX
+  specVersion: "1.6"
+  components: [{type: library, name: fastmcp, version: "4.0.0", purl: "pkg:pypi/fastmcp@4.0.0"}]
+payload:
+  server:
+    name: "{{params.server_name}}"
+    version: 1.0.0
+    description: 날씨·문서 검색 (마켓 설치)
+    remotes: [{type: streamable-http, url: "{{params.url}}"}]

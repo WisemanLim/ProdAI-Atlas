@@ -1,0 +1,683 @@
+# prodai-atlas — 공통 정의 (make local-all | make prod-all)
+# 컨트롤 플레인 = manager(Go) · 데이터 플레인 = agent-*(Python 단위 에이전트) · 콘솔 = console(React+Vite)
+x-bus-env: &bus-env
+  REDIS_URL: redis://redis:6379/0
+  NATS_URL: nats://nats:4222
+  # OB-TRACE — 모든 서비스가 OTLP/HTTP 로 Collector 에 trace 전송 (FR-OB-TRACE-01·05)
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_BSP_SCHEDULE_DELAY: "500"
+
+# 에이전트 → Manager 인증(서비스 API 키) · A2A 테넌트 JWT 검증 (PLT-IAM-06 · PLT-TEN-06)
+x-agent-auth: &agent-auth
+  ATLAS_MANAGER_TOKEN: ${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+  ATLAS_A2A_AUTH: ${ATLAS_A2A_AUTH:-verify}
+  ATLAS_ALLOW_ENV_SECRETS: ${ATLAS_ALLOW_ENV_SECRETS:-false}   # 환경변수 비밀 주입 기본 차단 (FR-PLT-SEC-03)
+  ATLAS_SECRET_REFRESH_S: ${ATLAS_SECRET_REFRESH_S:-300}       # 중개 비밀 갱신 주기(회전 반영)
+  ATLAS_PUSH_ALLOW_HOSTS: ${ATLAS_PUSH_ALLOW_HOSTS:-}          # A2A push webhook 사설 주소 허용 호스트 (그 외 https·공인 주소만)
+
+services:
+  manager:
+    build: { context: ./apps, dockerfile: manager/Dockerfile.bundle, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }   # 콘솔 내장 단일 바이너리
+    image: prodai-atlas-manager:${APP_ENV:-local}
+    environment:
+      <<: *bus-env
+      ATLAS_PROBE_INTERVAL: ${ATLAS_PROBE_INTERVAL:-5s}   # 배포 헬스 폴링 주기 (FR-PLT-MGR-05)
+      # 콘솔이 같은 출처로 부르는 플랫폼 서비스 (/svc/{name}/*)
+      ATLAS_SVC_URLS: gw=http://gateway:8080,ob=http://agent-ob:8000,ev=http://agent-ev:8000,gr=http://agent-gr:8000,mcpreg=http://agent-mcp-reg:8000,alrun=http://agent-al-run:8000,bl=http://agent-bl:8000,mat=http://agent-mat:8000,kb=http://agent-kb:8000,sbx=http://agent-sbx:8000,mkt=http://agent-mkt:8000,rpt=http://agent-rpt:8000,mcpgw=http://agent-mcp-gw:8000
+      # 인증·인가 (PLT-IAM): off = 로컬 개발(모두 관리자) · oidc = Keycloak 토큰 또는 API 키 필수
+      ATLAS_AUTH_MODE: ${ATLAS_AUTH_MODE:-off}
+      ATLAS_OIDC_ISSUER: ${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}/realms/atlas   # 브라우저가 보는 issuer
+      ATLAS_OIDC_JWKS_URL: http://keycloak:8080/realms/atlas/protocol/openid-connect/certs   # 컨테이너가 닿는 JWKS
+      ATLAS_FGA_URL: http://openfga:8080
+      ATLAS_FGA_TOKEN: ${OPENFGA_PRESHARED_KEY:-}
+      ATLAS_A2A_SIGNING_KEY: ${ATLAS_A2A_SIGNING_KEY:-}
+      ATLAS_MANAGER_BOOTSTRAP_KEY: ${ATLAS_MANAGER_BOOTSTRAP_KEY:-}
+      # 비밀 저장소 (PLT-SEC): local = file(데이터 볼륨) · prod = OpenBao KV v2
+      ATLAS_SECRET_STORE: ${ATLAS_SECRET_STORE:-file:///app/data/secrets}
+      ATLAS_SECRET_IMPORT: default/guard-secret=ATLAS_GUARD_SECRET,default/sandbox-token=ATLAS_SANDBOX_TOKEN,default/gateway-admin-token=ATLAS_GATEWAY_ADMIN_TOKEN,default/egress-admin-token=ATLAS_EGRESS_ADMIN_TOKEN,default/mcp-reg-admin-token=ATLAS_MCP_REG_ADMIN_TOKEN,default/mkt-admin-token=ATLAS_MKT_ADMIN_TOKEN,default/rpt-admin-token=ATLAS_RPT_ADMIN_TOKEN,default/rpt-ingest-secret=ATLAS_RPT_INGEST_SECRET,default/mcp-oauth-client-secret=ATLAS_KC_CI_SECRET   # env 주입 시절 비밀 1회 이관 (저장소가 정본)
+      ATLAS_GUARD_SECRET: ${ATLAS_GUARD_SECRET:-}
+      ATLAS_SANDBOX_TOKEN: ${ATLAS_SANDBOX_TOKEN:-}
+      ATLAS_EGRESS_ADMIN_TOKEN: ${ATLAS_EGRESS_ADMIN_TOKEN:-}
+      ATLAS_MKT_ADMIN_TOKEN: ${ATLAS_MKT_ADMIN_TOKEN:-}
+      ATLAS_KC_CI_SECRET: ${ATLAS_KC_CI_SECRET:-}   # → mcp-oauth-client-secret (MCP 업스트림 OAuth 서비스 계정 atlas-ci)
+      ATLAS_MCP_REG_ADMIN_TOKEN: ${ATLAS_MCP_REG_ADMIN_TOKEN:-}   # → mcp-reg-admin-token (X-MKT 가 MCP-REG 에 등록할 때)
+      ATLAS_RPT_ADMIN_TOKEN: ${ATLAS_RPT_ADMIN_TOKEN:-}
+      ATLAS_RPT_INGEST_SECRET: ${ATLAS_RPT_INGEST_SECRET:-}
+      ATLAS_GATEWAY_ADMIN_TOKEN: ${ATLAS_GATEWAY_ADMIN_TOKEN:-}   # BL(모델 수명 주기)이 중개로 받는 gateway-admin-token 의 1회 이관 원천
+      # 알림 (X-NTF): 이벤트 → 규칙 → webhook(HMAC)·email(SMTP)
+      ATLAS_SMTP_ADDR: ${ATLAS_SMTP_ADDR:-mailpit:1025}
+      ATLAS_SMTP_FROM: ${ATLAS_SMTP_FROM:-atlas@localhost}
+      ATLAS_NOTIFY_ALLOW_HOSTS: ${ATLAS_NOTIFY_ALLOW_HOSTS:-}   # 사설 주소 webhook 허용 호스트 (그 외 https·공인 주소만)
+      ATLAS_RPT_INGEST_URL: http://agent-rpt:8000/v1/ingest/events   # X-RPT 수집 — 모든 PLT·GW 이벤트를 서명 전달 (내부 1st-party, 규칙 불필요)
+    ports: ["${BIND_HOST:-127.0.0.1}:${MANAGER_PORT:-8080}:8080"]
+    volumes: ["managerdata:/app/data"]
+    depends_on:
+      nats: { condition: service_healthy }
+      redis: { condition: service_started }
+      openfga: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "/server", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # AI Gateway (GW-* 6종) — 모든 모델 호출의 단일 경로 (PRD §1.3-4)
+  gateway:
+    build: { context: ./apps/gateway, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-gateway:${APP_ENV:-local}
+    environment:
+      <<: *bus-env
+      ATLAS_GATEWAY_ADMIN_TOKEN: ${ATLAS_GATEWAY_ADMIN_TOKEN:?ATLAS_GATEWAY_ADMIN_TOKEN 필요}
+      ATLAS_GATEWAY_BOOTSTRAP_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_GATEWAY_BOOTSTRAP_RPM: ${ATLAS_GATEWAY_BOOTSTRAP_RPM:-600}
+      ATLAS_GATEWAY_BOOTSTRAP_TPM: ${ATLAS_GATEWAY_BOOTSTRAP_TPM:-200000}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEYS: ${OPENAI_API_KEYS:-}
+      ATLAS_GUARD_URL: http://agent-gr:8000            # 가드레일 pre/post 훅 (FR-GW-POL-02)
+      ATLAS_GUARD_ON_ERROR: ${ATLAS_GUARD_ON_ERROR:-fail_open}
+      ATLAS_GUARD_TIMEOUT_MS: "500"
+      ATLAS_BATCH_POLL_BASE_SEC: ${ATLAS_BATCH_POLL_BASE_SEC:-60}   # 배치 폴링 첫 간격(초) — 이후 2배씩, 상한 30분 (FR-EC-BATCH-02)
+      ATLAS_OB_CAPTURE: ${ATLAS_OB_CAPTURE:-redacted}  # span 본문 기록 정책 (FR-OB-LOG-01)
+      ATLAS_SECRET_STORE: ${ATLAS_GATEWAY_SECRET_STORE:-}  # 공급자 키 정본·무중단 회전 (FR-PLT-SEC-04)
+    ports: ["${BIND_HOST:-127.0.0.1}:${GATEWAY_PORT:-8090}:8080"]
+    depends_on:
+      nats: { condition: service_healthy }
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "/server", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 단위 에이전트 AL-PLAN (agents/runtime 이미지, ATLAS_UNIT_MODULE 로 단위 선택). Manager 에 자가 등록.
+  agent-al-plan:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.al_plan
+      ATLAS_BL_URL: http://agent-bl:8000          # 프롬프트 레지스트리·하네스 (BL-HARN-01·03)
+      ATLAS_FLAGD_URL: http://flagd:8016          # 보정 플래그 OFREP (BL-HARN-04)
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-al-plan:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    ports: ["${BIND_HOST:-127.0.0.1}:${AL_PLAN_PORT:-8000}:8000"]
+    volumes: ["runtimedata:/app/data"]
+    depends_on:
+      nats: { condition: service_healthy }
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 단위 에이전트 AL-RUN (같은 runtime 이미지) — 루프 런타임. AL-PLAN 은 A2A 로 원격 호출, 모델은 Gateway 경유.
+  agent-al-run:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.al_run
+      ATLAS_OIDC_ISSUER: ${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}/realms/atlas
+      ATLAS_OIDC_ISSUER_INTERNAL: http://keycloak:8080/realms/atlas
+      ATLAS_BL_URL: http://agent-bl:8000          # 프롬프트 레지스트리·하네스 (BL-HARN-01·03)
+      ATLAS_FLAGD_URL: http://flagd:8016          # 보정 플래그 OFREP (BL-HARN-04)
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-al-run:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_PLANNER_URL: http://agent-al-plan:8000
+      ATLAS_MCP_REGISTRY_URL: http://agent-mcp-reg:8000
+      ATLAS_GUARD_URL: http://agent-gr:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${AL_RUN_PORT:-8001}:8000"]
+    volumes: ["alrundata:/app/data"]
+    networks: [default, mcp-sbx-net]
+    depends_on:
+      nats: { condition: service_healthy }
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # MCP-REG 사설 레지스트리 (단위 에이전트, runtime 이미지)
+  agent-mcp-reg:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.mcp_reg
+      ATLAS_OIDC_ISSUER: ${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}/realms/atlas
+      ATLAS_OIDC_ISSUER_INTERNAL: http://keycloak:8080/realms/atlas
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-mcp-reg:8000
+      ATLAS_MCP_REG_ADMIN_TOKEN: ${ATLAS_MCP_REG_ADMIN_TOKEN:?ATLAS_MCP_REG_ADMIN_TOKEN 필요}
+    ports: ["${BIND_HOST:-127.0.0.1}:${MCP_REG_PORT:-8002}:8000"]
+    volumes: ["mcpregdata:/app/data"]
+    networks: [default, mcp-sbx-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # GR-IO 가드레일 서비스 (PII·탈옥·유해성·형식·정책 — 단위 에이전트, runtime 이미지)
+  agent-gr:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.gr_io
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-gr:8000
+      ATLAS_GUARD_ADMIN_TOKEN: ${ATLAS_GUARD_ADMIN_TOKEN:?ATLAS_GUARD_ADMIN_TOKEN 필요}
+      # 가드 비밀(guard-secret)은 환경변수가 아니라 Manager 비밀 중개로 받는다 (매니페스트 spec.secrets)
+    ports: ["${BIND_HOST:-127.0.0.1}:${GR_PORT:-8005}:8000"]
+    volumes: ["grdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # OB-TRACE·DEBUG·DASH 관측 서비스 — ClickHouse 조회·재실행·대시보드·SLO·경보
+  agent-ob:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ob
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ob:8000
+      ATLAS_OB_PUBLIC_URL: ${ATLAS_OB_PUBLIC_URL:-http://127.0.0.1:8006}
+      ATLAS_OB_ECHO_RECEIVER: ${ATLAS_OB_ECHO_RECEIVER:-false}
+      ATLAS_OB_ALERT_INTERVAL: ${ATLAS_OB_ALERT_INTERVAL:-30}
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-atlas}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD 필요}
+    ports: ["${BIND_HOST:-127.0.0.1}:${OB_PORT:-8006}:8000"]
+    volumes: ["obdata:/app/data"]
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # EV-GOLD·EV-REG 평가 서비스 — 골든셋·검수·불변 버전·회귀 스위트·CI 게이트
+  agent-ev:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ev
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ev:8000
+      ATLAS_EV_CURATOR_TOKEN: ${ATLAS_EV_CURATOR_TOKEN:?ATLAS_EV_CURATOR_TOKEN 필요}
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_OB_URL: http://agent-ob:8000
+      ATLAS_GUARD_URL: http://agent-gr:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${EV_PORT:-8007}:8000"]
+    volumes: ["evdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # BL Bitter Lesson — 모델 교체 자동화·하네스 외부화(프롬프트·하네스·규칙·보정 플래그)·계산 정책 (FR-BL-*)
+  agent-bl:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.bl
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-bl:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_EV_URL: http://agent-ev:8000
+      ATLAS_FLAGS_FILE: /app/data/flags/flags.json   # flagd 가 같은 볼륨을 읽기 전용으로 감시
+    ports: ["${BIND_HOST:-127.0.0.1}:${BL_PORT:-8015}:8000"]
+    volumes: ["bldata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # MAT 성숙도 진단 — 4속성 점수·L0~L4·커버리지·로드맵·월간 리포트 (FR-MAT-*)
+  agent-mat:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.mat
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-mat:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_OB_URL: http://agent-ob:8000
+      ATLAS_EV_URL: http://agent-ev:8000
+      ATLAS_GUARD_URL: http://agent-gr:8000
+      ATLAS_MCP_REGISTRY_URL: http://agent-mcp-reg:8000
+      ATLAS_ALRUN_URL: http://agent-al-run:8000
+      ATLAS_BL_URL: http://agent-bl:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${MAT_PORT:-8017}:8000"]
+    volumes: ["matdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # X-KB 지식·메모리 — 수집 커넥터·청킹/임베딩·하이브리드 검색(ACL)·에이전트 메모리·삭제권 전파·RAG 평가
+  agent-kb:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.kb
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-kb:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_GUARD_URL: http://agent-gr:8000
+      ATLAS_EV_URL: http://agent-ev:8000
+      ATLAS_OB_URL: http://agent-ob:8000
+      ATLAS_KB_URL_ALLOW_HOSTS: ${ATLAS_KB_URL_ALLOW_HOSTS:-}
+    ports: ["${BIND_HOST:-127.0.0.1}:${KB_PORT:-8018}:8000"]
+    volumes: ["kbdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 가짜 업스트림 (시험·개발 전용) — 문서 HTTP·GitHub·Slack·Jira REST 흉내 (실자격증명 없이 커넥터·egress 검증)
+  fake-upstream:
+    build: { context: ./agents/fake-upstream, dockerfile: Dockerfile, target: runtime }
+    image: prodai-atlas-fake-upstream:${APP_ENV:-local}
+
+  # egress 프록시 — 샌드박스·MCP 서버 송신 허용목록·사설/메타데이터 차단 (X-SBX-02 · MCP-SYS-04)
+  egress-proxy:
+    build: { context: ./agents/egress-proxy, dockerfile: Dockerfile, target: runtime }
+    image: prodai-atlas-egress-proxy:${APP_ENV:-local}
+    environment:
+      EGRESS_ADMIN_TOKEN: ${ATLAS_EGRESS_ADMIN_TOKEN:?ATLAS_EGRESS_ADMIN_TOKEN 필요 / required}
+    networks: [default, sandbox-net, mcp-sbx-net]
+
+  # X-SBX 코드 샌드박스 — sbx.run_code(Python·JS·셸), 자원·송신 상한·격리 수준·실행 감사
+  agent-sbx:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.sbx
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-sbx:8000
+      ATLAS_SANDBOX_URL: http://sandbox:8000
+      ATLAS_EGRESS_ADMIN_URL: http://egress-proxy:8080
+      ATLAS_EGRESS_PROXY_URL: http://egress-proxy:3128
+      ATLAS_GUARD_URL: http://agent-gr:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${SBX_PORT:-8019}:8000"]
+    volumes: ["sbxdata:/app/data"]
+    networks: [default, sandbox-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # MCP-SYS 표준 커넥터 팩 + MCP-RES 리소스 — /connectors/mcp (자격증명 주입·egress 통제·읽기 전용 DB·헬스)
+  agent-mcp-sys:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.mcp_sys
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-mcp-sys:8000
+      ATLAS_EGRESS_ADMIN_URL: http://egress-proxy:8080
+      ATLAS_EGRESS_PROXY_URL: http://egress-proxy:3128
+      ATLAS_GUARD_URL: http://agent-gr:8000
+      ATLAS_SBX_URL: http://agent-sbx:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${MCP_SYS_PORT:-8020}:8000"]
+    volumes: ["mcpsysdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # mcp-sbx — 저신뢰 stdio MCP 서버 격리 실행·HTTP 중계 (X-SBX-07 · MCP-SYS-03). 내부 전용망 + egress 프록시만
+  mcp-sbx:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    command: ["python", "-m", "mcp_servers.sbx_bridge"]
+    environment:
+      EGRESS_ADMIN_TOKEN: ${ATLAS_EGRESS_ADMIN_TOKEN:?ATLAS_EGRESS_ADMIN_TOKEN 필요 / required}
+      ATLAS_EGRESS_ADMIN_URL: http://egress-proxy:8080
+      ATLAS_EGRESS_PROXY_URL: http://egress-proxy:3128
+      MCP_SBX_PACKAGES: io.prodai/stdio-echo=mcp_servers.stdio_demo,io.prodai/interactive=mcp_servers.interactive
+      MCP_SBX_PROFILES: '{"io.prodai/stdio-echo": {"network": {"allow": ["fake-upstream"]}, "env": []}, "io.prodai/interactive": {"network": {"allow": []}, "env": []}}'
+    networks: [mcp-sbx-net]
+    user: "61001:61001"     # 전용 비루트 UID (dev 이미지도) — RLIMIT_NPROC 를 다른 컨테이너와 나누지 않는다
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      egress-proxy: { condition: service_healthy }
+
+  # X-MKT 템플릿·마켓 — 카탈로그·원클릭 설치·서명/출처 검증·사내 게시(X-HITL 승인)·업데이트 알림·MCP 카탈로그 동기화
+  agent-mkt:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.mkt
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-mkt:8000
+      ATLAS_MCP_REGISTRY_URL: http://agent-mcp-reg:8000
+      ATLAS_EV_URL: http://agent-ev:8000
+      ATLAS_GUARD_URL: http://agent-gr:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${MKT_PORT:-8023}:8000"]
+    volumes: ["mktdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # X-RPT 사용량·감사 리포트 — 계측·비용 그룹핑·차지백·통합 감사(해시 체인·WORM)·SIEM·월간 보고서·이상 탐지
+  agent-rpt:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.rpt
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-rpt:8000
+      ATLAS_MAT_URL: http://agent-mat:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${RPT_PORT:-8022}:8000"]
+    volumes: ["rptdata:/app/data"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # MCP-HOST 게이트웨이 — /t/{tenant}/mcp/{virtualServer} 단일 엔드포인트 (네임스페이스·가상 서버·가드 훅·MRTR 중계·OAuth 업스트림)
+  agent-mcp-gw:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.mcp_gw
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-mcp-gw:8000
+      ATLAS_MCP_REGISTRY_URL: http://agent-mcp-reg:8000
+      ATLAS_GUARD_URL: http://agent-gr:8000
+      ATLAS_MCP_GUARD_HOOKS: "true"
+      ATLAS_MCP_GW_AUTH: ${ATLAS_MCP_GW_AUTH:-optional}
+      ATLAS_OIDC_ISSUER: ${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}/realms/atlas
+      ATLAS_OIDC_ISSUER_INTERNAL: http://keycloak:8080/realms/atlas
+    ports: ["${BIND_HOST:-127.0.0.1}:${MCP_GW_PORT:-8024}:8000"]
+    volumes: ["mcpgwdata:/app/data"]
+    networks: [default, mcp-sbx-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # OAuth 2.1 보호 MCP 서버 (시험 전용) — Keycloak 토큰만 받는다 (FR-MCP-HOST-03 시험 대상)
+  mcp-protected:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    command: ["python", "-m", "mcp_servers.protected"]
+    environment:
+      ATLAS_OIDC_ISSUER: ${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}/realms/atlas
+      ATLAS_OIDC_JWKS_URL: http://keycloak:8080/realms/atlas/protocol/openid-connect/certs
+      ATLAS_PUBLIC_URL: http://mcp-protected:8000
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+
+  # OpenFeature flagd — 보정 플래그 평가 (OFREP :8016). 플래그 파일 정본은 BL 이 쓴다 (FR-BL-HARN-04)
+  flagd:
+    image: ghcr.io/open-feature/flagd:v0.12.9
+    command: ["start", "--uri", "file:/data/flags/flags.json"]
+    volumes: ["bldata:/data:ro"]
+    depends_on:
+      agent-bl: { condition: service_healthy }
+
+  # 데모 MCP 서버 (Streamable HTTP /mcp) — DEMO_POISON=true 로 rug pull 시연
+  mcp-demo:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    command: ["python", "-m", "mcp_servers.demo"]
+    environment:
+      DEMO_POISON: ${DEMO_POISON:-false}
+    ports: ["${BIND_HOST:-127.0.0.1}:${MCP_DEMO_PORT:-8003}:8000"]
+
+  # MCP-TOOL — Manager OpenAPI 를 MCP 도구로 (FR-MCP-TOOL-01)
+  mcp-tool:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    command: ["python", "-m", "mcp_servers.openapi_tools"]
+    environment:
+      MCP_OPENAPI_URL: http://manager:8080/api/v1/openapi.json
+      MCP_OPENAPI_BASE_URL: http://manager:8080
+      ATLAS_MANAGER_TOKEN: ${ATLAS_MANAGER_BOOTSTRAP_KEY:-}   # 자기 서비스 키 (사용자 토큰 패스스루 금지)
+    ports: ["${BIND_HOST:-127.0.0.1}:${MCP_TOOL_PORT:-8004}:8000"]
+    depends_on:
+      manager: { condition: service_healthy }
+
+  console:
+    build: { context: ./apps/console, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-console:${APP_ENV:-local}
+    ports: ["${BIND_HOST:-127.0.0.1}:${CONSOLE_PORT:-5173}:5173"]
+    depends_on:
+      manager: { condition: service_healthy }
+      gateway: { condition: service_started }
+
+  # 다중 에이전트 오케스트레이터 — 분해·위임 명세·병렬 위임·배리어·병합 (MA-ORCH)
+  agent-ma-orch:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ma_orch
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ma-orch:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    ports: ["${BIND_HOST:-127.0.0.1}:${MA_ORCH_PORT:-8010}:8000"]
+    volumes: ["maorchdata:/app/data"]
+    depends_on:
+      nats: { condition: service_healthy }
+      manager: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 다중 에이전트 결과 병합·검증 (MA-MERGE)
+  agent-ma-merge:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ma_merge
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ma-merge:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    ports: ["${BIND_HOST:-127.0.0.1}:${MA_MERGE_PORT:-8011}:8000"]
+    volumes: ["mamergedata:/app/data"]
+    depends_on:
+      nats: { condition: service_healthy }
+      manager: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 다중 에이전트 조사 서브에이전트 — 내장 코퍼스, 출처 필수 (MA-RES)
+  agent-ma-res:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ma_res
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ma-res:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    ports: ["${BIND_HOST:-127.0.0.1}:${MA_RES_PORT:-8012}:8000"]
+    volumes: ["maresdata:/app/data"]
+    depends_on:
+      nats: { condition: service_healthy }
+      manager: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 다중 에이전트 코드 리뷰 서브에이전트 — diff·구조화 이슈·SARIF (MA-CR)
+  agent-ma-cr:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ma_cr
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ma-cr:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+    ports: ["${BIND_HOST:-127.0.0.1}:${MA_CR_PORT:-8013}:8000"]
+    volumes: ["macrdata:/app/data"]
+    depends_on:
+      nats: { condition: service_healthy }
+      manager: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 다중 에이전트 분석 서브에이전트 — 샌드박스 코드 실행 (MA-ANL)
+  agent-ma-anl:
+    build: { context: ./agents/runtime, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-agent-runtime:${APP_ENV:-local}
+    environment:
+      <<: [*bus-env, *agent-auth]
+      ATLAS_UNIT_MODULE: units.ma_anl
+      ATLAS_MANAGER_URL: http://manager:8080
+      ATLAS_PUBLIC_URL: http://agent-ma-anl:8000
+      ATLAS_GATEWAY_URL: http://gateway:8080
+      ATLAS_GATEWAY_KEY: ${ATLAS_GATEWAY_AL_PLAN_KEY:-}
+      ATLAS_SANDBOX_URL: http://sandbox:8000
+    ports: ["${BIND_HOST:-127.0.0.1}:${MA_ANL_PORT:-8014}:8000"]
+    volumes: ["maanldata:/app/data"]
+    networks: [default, sandbox-net]
+    depends_on:
+      nats: { condition: service_healthy }
+      manager: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # 분석 샌드박스 (FR-MA-ANL-01·05) — 내부 전용망(외부 차단)·읽기 전용·권한 없음·자원 한도. ma-anl 만 닿는다.
+  sandbox:
+    build: { context: ./agents/sandbox, dockerfile: Dockerfile, target: runtime, args: { VERSION: "${ATLAS_VERSION:-0.0.0-dev}" } }
+    image: prodai-atlas-sandbox:${APP_ENV:-local}
+    environment:
+      SANDBOX_TOKEN: ${ATLAS_SANDBOX_TOKEN:?ATLAS_SANDBOX_TOKEN 필요 / required}
+      SANDBOX_MAX_TIMEOUT_S: "300"
+      SANDBOX_MAX_MEM_MB: "1536"
+    networks: [sandbox-net]
+    read_only: true
+    tmpfs: ["/tmp:size=256m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 2g
+    cpus: 2
+
+  # IdP — OIDC SSO (FR-PLT-IAM-01). 모드별 기동 방식은 docker-compose.{local,prod}.yml
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD 필요 / required}
+      KC_HOSTNAME: ${ATLAS_KEYCLOAK_URL:-http://127.0.0.1:8180}    # 토큰 issuer = 브라우저 주소, 백채널은 요청 주소
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      ATLAS_KC_CI_SECRET: ${ATLAS_KC_CI_SECRET:?ATLAS_KC_CI_SECRET 필요 / required}   # realm import 자리표시자
+    volumes: ["./deploy/keycloak:/opt/keycloak/data/import:ro"]
+    ports: ["${BIND_HOST:-127.0.0.1}:${KEYCLOAK_PORT:-8180}:8080"]
+    healthcheck:   # 이미지에 curl 이 없어 bash /dev/tcp 로 관리 포트(9000) 확인
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # 관계 기반 인가 — RBAC 역할 템플릿 (FR-PLT-IAM-04)
+  openfga:
+    image: openfga/openfga:v1.10.2
+    command: run
+    environment:
+      OPENFGA_PLAYGROUND_ENABLED: "false"
+      OPENFGA_AUTHN_METHOD: preshared
+      OPENFGA_AUTHN_PRESHARED_KEYS: ${OPENFGA_PRESHARED_KEY:?OPENFGA_PRESHARED_KEY 필요 / required}
+      OPENFGA_LOG_LEVEL: warn
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=127.0.0.1:8081"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+networks:
+  default:
+  sandbox-net:
+    internal: true          # 외부 송신 없음 — 샌드박스 코드가 인터넷에 닿지 못한다
+  mcp-sbx-net:
+    internal: true          # stdio MCP 격리망 — egress 프록시·레지스트리·호스트만 닿는다
+
+volumes:
+  maorchdata:
+  mamergedata:
+  maresdata:
+  macrdata:
+  maanldata:
+  managerdata:
+  runtimedata:
+  alrundata:
+  mcpregdata:
+  grdata:
+  obdata:
+  evdata:
+  bldata:
+  matdata:
+  kbdata:
+  sbxdata:
+  mcpsysdata:
+  mktdata:
+  rptdata:
+  mcpgwdata:

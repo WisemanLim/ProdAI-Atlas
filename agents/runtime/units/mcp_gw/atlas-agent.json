@@ -1,0 +1,67 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {
+    "name": "mcp-gateway",
+    "unitId": "MCP-HOST",
+    "layer": "L1",
+    "concept": "02-mcp"
+  },
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [
+      {
+        "binding": "JSONRPC",
+        "port": 8000,
+        "path": "/a2a"
+      }
+    ],
+    "agentCard": {
+      "path": "/.well-known/agent-card.json",
+      "visibility": "tenant",
+      "skills": [
+        "mcp.gateway"
+      ]
+    },
+    "harness": {
+      "modelAlias": "chat-default",
+      "tools": [],
+      "guardrailPolicyRef": null
+    },
+    "config": {
+      "allowedOrigins": [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8080"
+      ],
+      "specTtlS": 15,
+      "taintTtlS": 1800
+    },
+    "secrets": [
+      {
+        "name": "mcp-reg-admin-token",
+        "required": false
+      },
+      {
+        "name": "mcp-oauth-client-secret",
+        "required": false
+      }
+    ],
+    "state": {
+      "stateless": false,
+      "store": "sql",
+      "stateSchemaVersion": 1
+    },
+    "health": {
+      "liveness": "/healthz",
+      "readiness": "/readyz",
+      "startupTimeoutSec": 60
+    },
+    "drivers": {
+      "supported": [
+        "local",
+        "compose"
+      ]
+    }
+  }
+}

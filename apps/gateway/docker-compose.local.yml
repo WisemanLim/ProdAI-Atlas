@@ -1,0 +1,14 @@
+# atlas-gateway — local 모드: SQLite + dev 스테이지(go run) + 소스 바인드
+services:
+  api:
+    build: { target: dev }
+    env_file: [".env.local"]
+    volumes:
+      - ./:/src
+      - gomod:/go/pkg/mod
+      - appdata:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health >/dev/null"]
+      start_period: 60s
+volumes:
+  gomod:

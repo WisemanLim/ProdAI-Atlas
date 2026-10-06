@@ -1,0 +1,18 @@
+[package]
+name = "atlas-desktop"
+version = "0.2.0"
+description = "ProdAI Atlas desktop — Tauri shell over the embedded console, atlas-manager as sidecar"
+license = "Apache-2.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

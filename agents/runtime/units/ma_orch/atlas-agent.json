@@ -1,0 +1,15 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "ma-orch", "unitId": "MA-ORCH", "layer": "L1", "concept": "03-multi-agent"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["ma.orchestrate"]},
+    "harness": {"modelAlias": "planner-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {"maxSubagents": 8, "maxTotalSpawns": 20, "maxDependencyDensity": 0.5, "coordinationShare": 0.2,
+               "overheadAlert": 0.35, "concurrency": 4, "defaultDeadlineS": 60, "budgetTokens": 50000},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}

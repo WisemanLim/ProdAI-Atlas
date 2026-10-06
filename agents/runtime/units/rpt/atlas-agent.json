@@ -1,0 +1,26 @@
+{
+  "apiVersion": "agents.prodai.io/v1alpha1",
+  "kind": "AtlasAgent",
+  "metadata": {"name": "rpt", "unitId": "X-RPT", "layer": "X", "concept": "x-platform"},
+  "spec": {
+    "version": "0.1.0",
+    "interfaces": [{"binding": "JSONRPC", "port": 8000, "path": "/a2a"}],
+    "agentCard": {"path": "/.well-known/agent-card.json", "visibility": "tenant", "skills": ["rpt.usage"]},
+    "harness": {"modelAlias": "chat-default", "tools": [], "guardrailPolicyRef": null},
+    "config": {
+      "orgs": ["default"],
+      "currencies": {"USD": 1, "KRW": 1380, "EUR": 0.92, "JPY": 150},
+      "sbxCpuUsdPerSecond": 0.00005,
+      "defaultPlan": "standard",
+      "auditRetentionDays": 365,
+      "auditTopics": ["plt.approval.", "plt.kb.erasure.", "plt.kb.memory.", "plt.mkt.", "plt.sbx.limit_exceeded", "plt.mcp.sys.health", "plt.secret.",
+                      "plt.bl.", "plt.rpt.report.", "plt.rpt.chargeback.", "plt.mat.stage_changed", "plt.quota."],
+      "anomalyMinWindows": 5,
+      "ewmaAlpha": 0.3
+    },
+    "secrets": [{"name": "rpt-admin-token", "required": true}, {"name": "rpt-ingest-secret", "required": true}, {"name": "siem-hec-token", "required": false}],
+    "state": {"stateless": false, "store": "sql", "stateSchemaVersion": 1},
+    "health": {"liveness": "/healthz", "readiness": "/readyz", "startupTimeoutSec": 60},
+    "drivers": {"supported": ["local", "compose"]}
+  }
+}
